@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Items & BOMs · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <div class="toolbar">
+        <input type="search" id="search" placeholder="Search SKU or name" aria-label="Search items">
+        <select id="type-filter" aria-label="Filter by type">
+          <option value="">All items</option>
+          <option value="part">Parts</option>
+          <option value="complete">Complete boards</option>
+        </select>
+        <span class="muted" id="row-count"></span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>SKU / barcode</th><th>Name</th><th>Type</th><th>Supplier</th>
+          <th class="num">Lead time</th><th class="num">Cost</th><th class="num">Price</th>
+          <th class="num">Margin</th><th class="num">Review every</th><th></th>
+        </tr></thead>
+        <tbody id="items-body"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Cost is calculated: a part shows its weighted average cost, a complete board shows the roll-up of its bill of materials. Click a complete board to see its BOM.</p>
+    </div>
+
+    <div class="panel" id="bom-panel" hidden>
+      <h2 id="bom-title"></h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Component SKU</th><th>Component</th><th class="num">Qty per board</th>
+          <th class="num">Unit cost</th><th class="num">Extended cost</th>
+        </tr></thead>
+        <tbody id="bom-body"></tbody>
+        <tfoot><tr><td colspan="4">Rolled-up cost</td><td class="num" id="bom-total"></td></tr></tfoot>
+      </table></div>
+      <p class="muted">Change a quantity and the rolled-up cost above and in the item list recalculates.</p>
+    </div>
+  </div>
+
+  <dialog id="edit-dialog">
+    <h2 id="edit-title">Edit item</h2>
+    <form id="edit-form">
+      <div class="form-grid">
+        <label class="wide">Name <input id="f-name" required></label>
+        <label>Price ($) <input id="f-price" type="number" min="0" step="0.01"></label>
+        <label id="f-cost-wrap">Supplier quoted cost ($) <input id="f-cost" type="number" min="0" step="0.01"></label>
+        <label id="f-lead-wrap">Lead time (days) <input id="f-lead" type="number" min="0" step="1"></label>
+        <label>Review every (days) <input id="f-review" type="number" min="1" step="1" required></label>
+      </div>
+      <p class="muted" id="f-cost-note">Quoted cost is the default price on a new purchase order. The cost column in the list is the weighted average, which only changes when stock is received.</p>
+      <p class="error-text" id="edit-error" role="alert"></p>
+      <div class="form-actions">
+        <button type="button" class="btn" id="edit-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="edit-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Items & BOMs');
+      if (!me) return;
+      const { sb, esc, money, percent, toast } = WBC;
+
+      let items = [];        // rows from the items table
+      let costs = new Map(); // item id -> current cost, from the item_costs view
+      let bomLines = [];     // rows from bom_lines
+      let selectedId = null; // the complete board whose BOM is open
+      let editingId = null;
+
+      // Read everything this page shows. Costs come from the database view,
+      // so the page never does its own cost arithmetic for the list.
+      async function load() {
+        const [itemsRes, costsRes, bomRes] = await Promise.all([
+          sb.from('items').select('*, suppliers(name)').eq('is_active', true).order('sku'),
+          sb.from('item_costs').select('item_id, current_cost'),
+          sb.from('bom_lines').select('*').order('id'),
+        ]);
+        const error = itemsRes.error || costsRes.error || bomRes.error;
+        if (error) { toast(error.message, true); return; }
+        items = itemsRes.data;
+        costs = new Map(costsRes.data.map((c) => [c.item_id, c.current_cost]));
+        bomLines = bomRes.data;
+        renderItems();
+        renderBom();
+      }
+
+      function renderItems() {
+        const term = document.getElementById('search').value.trim().toLowerCase();
+        const type = document.getElementById('type-filter').value;
+        const rows = items.filter((i) =>
+          (!type || i.item_type === type) &&
+          (!term || i.sku.toLowerCase().includes(term) || i.name.toLowerCase().includes(term)));
+
+        document.getElementById('row-count').textContent = rows.length + ' of ' + items.length + ' items';
+        document.getElementById('items-body').innerHTML = rows.map((i) => {
+          const cost = costs.get(i.id);
+          const hasBoth = cost !== null && cost !== undefined && i.price !== null && Number(i.price) > 0;
+          const margin = hasBoth ? (i.price - cost) / i.price : null;
+          const isComplete = i.item_type === 'complete';
+          return `
+            <tr data-id="${i.id}" class="${isComplete ? 'clickable' : ''} ${i.id === selectedId ? 'selected' : ''}">
+              <td>${esc(i.sku)}</td>
+              <td>${esc(i.name)}</td>
+              <td><span class="tag ${esc(i.item_type)}">${esc(i.item_type)}</span></td>
+              <td>${i.suppliers ? esc(i.suppliers.name) : '<span class="muted">Made in-house</span>'}</td>
+              <td class="num">${i.lead_time_days === null ? '—' : esc(i.lead_time_days) + ' d'}</td>
+              <td class="num">${money(cost)}</td>
+              <td class="num">${money(i.price)}</td>
+              <td class="num">${percent(margin)}</td>
+              <td class="num">${esc(i.review_interval_days)} d</td>
+              <td><button class="btn small" data-edit="${i.id}">Edit</button></td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="10" class="muted">No items found. If the list is empty, run sql/02_master_seed.sql.</td></tr>';
+      }
+
+      function renderBom() {
+        const panel = document.getElementById('bom-panel');
+        const parent = items.find((i) => i.id === selectedId);
+        if (!parent) { panel.hidden = true; return; }
+
+        const byId = new Map(items.map((i) => [i.id, i]));
+        const lines = bomLines.filter((b) => b.parent_item_id === selectedId);
+        document.getElementById('bom-title').textContent = 'Bill of materials: ' + parent.name;
+        document.getElementById('bom-body').innerHTML = lines.map((b) => {
+          const comp = byId.get(b.component_item_id) || {};
+          const unit = costs.get(b.component_item_id);
+          return `
+            <tr>
+              <td>${esc(comp.sku)}</td>
+              <td>${esc(comp.name)}</td>
+              <td class="num"><input class="qty" type="number" min="0.01" step="any" value="${esc(b.qty)}"
+                    data-bom="${b.id}" aria-label="Quantity of ${esc(comp.name)}"></td>
+              <td class="num">${money(unit)}</td>
+              <td class="num">${money(b.qty * unit)}</td>
+            </tr>`;
+        }).join('');
+        // The total shown is the database's roll-up, the same number the list uses.
+        document.getElementById('bom-total').textContent = money(costs.get(selectedId));
+        panel.hidden = false;
+      }
+
+      // --- list interactions ---------------------------------------------
+      document.getElementById('search').addEventListener('input', renderItems);
+      document.getElementById('type-filter').addEventListener('change', renderItems);
+
+      document.getElementById('items-body').addEventListener('click', (event) => {
+        const editBtn = event.target.closest('[data-edit]');
+        if (editBtn) { openEdit(Number(editBtn.dataset.edit)); return; }
+        const row = event.target.closest('tr.clickable');
+        if (!row) return;
+        const id = Number(row.dataset.id);
+        selectedId = selectedId === id ? null : id;
+        renderItems();
+        renderBom();
+        if (selectedId) document.getElementById('bom-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      // --- change a BOM quantity -----------------------------------------
+      document.getElementById('bom-body').addEventListener('change', async (event) => {
+        const input = event.target.closest('[data-bom]');
+        if (!input) return;
+        const qty = Number(input.value);
+        if (!(qty > 0)) { toast('Quantity must be more than zero.', true); await load(); return; }
+        const { error } = await sb.from('bom_lines').update({ qty }).eq('id', Number(input.dataset.bom));
+        if (error) { toast(error.message, true); }
+        else { toast('BOM updated. Cost recalculated.'); }
+        await load();
+      });
+
+      // --- edit an item ----------------------------------------------------
+      const dialog = document.getElementById('edit-dialog');
+      const field = (id) => document.getElementById(id);
+      const numberOrNull = (value) => (value === '' ? null : Number(value));
+
+      function openEdit(id) {
+        const item = items.find((i) => i.id === id);
+        if (!item) return;
+        editingId = id;
+        const isPart = item.item_type === 'part';
+        field('edit-title').textContent = 'Edit ' + item.sku;
+        field('f-name').value = item.name;
+        field('f-price').value = item.price ?? '';
+        field('f-cost').value = item.standard_cost ?? '';
+        field('f-lead').value = item.lead_time_days ?? '';
+        field('f-review').value = item.review_interval_days;
+        // Cost and lead time are only entered for purchased parts.
+        field('f-cost-wrap').hidden = !isPart;
+        field('f-lead-wrap').hidden = !isPart;
+        field('f-cost-note').hidden = !isPart;
+        field('edit-error').textContent = '';
+        dialog.showModal();
+      }
+
+      field('edit-cancel').addEventListener('click', () => dialog.close());
+
+      field('edit-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const item = items.find((i) => i.id === editingId);
+        const changes = {
+          name: field('f-name').value.trim(),
+          price: numberOrNull(field('f-price').value),
+          review_interval_days: Number(field('f-review').value),
+        };
+        if (item.item_type === 'part') {
+          changes.standard_cost = numberOrNull(field('f-cost').value);
+          changes.lead_time_days = numberOrNull(field('f-lead').value);
+        }
+        field('edit-save').disabled = true;
+        const { error } = await sb.from('items').update(changes).eq('id', editingId);
+        field('edit-save').disabled = false;
+        if (error) { field('edit-error').textContent = error.message; return; }
+        dialog.close();
+        toast('Item saved.');
+        await load();
+      });
+
+      // --- realtime: reload when anyone changes an item or a BOM ------------
+      let reloadTimer;
+      const queueReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(load, 250); };
+      sb.channel('items-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bom_lines' }, queueReload)
+        .subscribe();
+
+      await load();
+    })();
+  </script>
+</body>
+</html>

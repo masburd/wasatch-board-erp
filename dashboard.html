@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <p class="note">Build steps 1–2 are in place: logins and master data. Sales, stock and purchasing numbers will appear here as those steps are built.</p>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="panel">
+      <h2>Locations</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Code</th><th>Name</th><th>Type</th></tr></thead>
+        <tbody id="locations-body"></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>Settings used in calculations</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Setting</th><th class="num">Value</th><th>Unit</th></tr></thead>
+        <tbody id="settings-body"></tbody>
+      </table></div>
+      <p class="muted">Editing arrives with the Settings page.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Dashboard');
+      if (!me) return;
+      const { sb, esc } = WBC;
+
+      // Row counts come straight from the database, not from typed-in numbers.
+      async function count(table, filter) {
+        let query = sb.from(table).select('*', { count: 'exact', head: true });
+        if (filter) query = filter(query);
+        const { count: n, error } = await query;
+        return error ? '!' : n;
+      }
+
+      const [parts, completes, suppliers, customers, bomLines, locations, settings] = await Promise.all([
+        count('items', (q) => q.eq('item_type', 'part')),
+        count('items', (q) => q.eq('item_type', 'complete')),
+        count('suppliers'),
+        count('customers'),
+        count('bom_lines'),
+        sb.from('locations').select('*').order('id'),
+        sb.from('settings').select('*').order('label'),
+      ]);
+
+      const cards = [
+        [parts, 'Parts'], [completes, 'Complete boards'], [bomLines, 'BOM lines'],
+        [suppliers, 'Suppliers'], [customers, 'Customers'],
+      ];
+      document.getElementById('cards').innerHTML = cards.map(([n, label]) =>
+        `<div class="card"><div class="num">${esc(n)}</div><div class="lbl">${esc(label)}</div></div>`).join('');
+
+      if (locations.error || settings.error) {
+        WBC.toast((locations.error || settings.error).message, true);
+        return;
+      }
+      document.getElementById('locations-body').innerHTML = locations.data.map((l) =>
+        `<tr><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.type)}</td></tr>`).join('')
+        || '<tr><td colspan="3" class="muted">No locations yet. Run sql/02_master_seed.sql.</td></tr>';
+      document.getElementById('settings-body').innerHTML = settings.data.map((s) =>
+        `<tr><td>${esc(s.label)}</td><td class="num">${esc(s.value)}</td><td class="muted">${esc(s.unit)}</td></tr>`).join('');
+    })();
+  </script>
+</body>
+</html>

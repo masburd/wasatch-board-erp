@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="center-card">
+    <h1>Wasatch Board Co.</h1>
+    <p class="muted">Sign in to the ERP</p>
+
+    <form id="login-form" class="stack">
+      <label>Email
+        <input type="email" id="email" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input type="password" id="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn primary" id="login-btn">Sign in</button>
+    </form>
+    <p class="error-text" id="login-error" role="alert"></p>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      if (!WBC.configured) { WBC.showSetupNotice(); return; }
+
+      const errorEl = document.getElementById('login-error');
+      const button = document.getElementById('login-btn');
+
+      // Staff go to the dashboard. The customer portal arrives in build step 11.
+      async function route(userId) {
+        const { data: profile } = await WBC.sb
+          .from('profiles').select('role').eq('id', userId).maybeSingle();
+        if (profile && profile.role === 'staff') {
+          window.location.replace('dashboard.html');
+        } else {
+          errorEl.textContent = 'Signed in, but this login is not staff yet. Run sql/03_make_me_staff.sql for this email, then sign in again.';
+          await WBC.sb.auth.signOut();
+        }
+      }
+
+      // Already signed in? Skip the form.
+      const { data: { session } } = await WBC.sb.auth.getSession();
+      if (session) { await route(session.user.id); }
+
+      document.getElementById('login-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorEl.textContent = '';
+        button.disabled = true;
+        const { data, error } = await WBC.sb.auth.signInWithPassword({
+          email: document.getElementById('email').value.trim(),
+          password: document.getElementById('password').value,
+        });
+        button.disabled = false;
+        if (error) { errorEl.textContent = error.message; return; }
+        await route(data.user.id);
+      });
+    })();
+  </script>
+</body>
+</html>

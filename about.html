@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About this system · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel prose">
+      <h2>What this is</h2>
+      <p>A working mini-ERP for Wasatch Board Co., a fictional Utah skateboard company, built for GSCM 401. It covers selling, inventory, purchasing, light manufacturing, planning and financial reporting across three locations.</p>
+    </div>
+
+    <div class="panel prose">
+      <h2>How it was built</h2>
+      <ul>
+        <li><strong>AI tools:</strong> the code and database design were written with Claude Code (Anthropic), directed and reviewed by the team from a written specification.</li>
+        <li><strong>Database, logins and realtime:</strong> Supabase (a hosted PostgreSQL database). Business rules such as posting a sale or receiving a purchase order run inside the database as functions, so each transaction fully happens or not at all.</li>
+        <li><strong>Front end:</strong> plain HTML, CSS and JavaScript with no framework and no build step.</li>
+        <li><strong>Hosting:</strong> GitHub Pages, served from a public GitHub repository.</li>
+      </ul>
+    </div>
+
+    <div class="panel prose">
+      <h2>How the numbers work</h2>
+      <ul>
+        <li><strong>One inventory ledger.</strong> Every sale, receipt, transfer, build, return and adjustment is a row in a single movements table. On-hand quantity is the sum of that ledger.</li>
+        <li><strong>Everything is calculated.</strong> Costs, totals and metrics are computed from stored transactions, so changing an input changes every result that depends on it.</li>
+        <li><strong>Weighted average cost.</strong> Each item's cost is re-averaged every time stock is received. A complete board's cost is rolled up from its components.</li>
+        <li><strong>Security.</strong> Database row-level security decides what each login can read or change.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>WBC.initPage('About this system');</script>
+</body>
+</html>

@@ -39,6 +39,7 @@
       <h2>Scan to adjust</h2>
       <div class="scan">
         <input id="adj-scan" placeholder="Scan a barcode, or type a SKU and press Enter" aria-label="Scan barcode to adjust" autocomplete="off">
+        <button type="button" class="btn" id="adj-cam">Use camera</button>
       </div>
       <div id="adj-picked" class="picked" hidden></div>
 
@@ -72,6 +73,7 @@
       </div>
       <div class="scan" style="margin-top:14px">
         <input id="tr-scan" placeholder="Scan a barcode to add it, or type a SKU and press Enter" aria-label="Scan barcode to add to transfer" autocomplete="off">
+        <button type="button" class="btn" id="tr-cam">Use camera</button>
       </div>
       <div class="table-wrap"><table>
         <thead><tr><th>SKU</th><th>Item</th><th class="num">Available at From</th><th class="num">Qty to move</th><th></th></tr></thead>
@@ -113,7 +115,7 @@
     (async () => {
       const me = await WBC.initPage('Inventory');
       if (!me) return;
-      const { sb, esc, money, qty, dateTime, toast, scanBox, findByCode } = WBC;
+      const { sb, esc, money, qty, dateTime, toast, scanBox, findByCode, cameraScan } = WBC;
       const $ = (id) => document.getElementById(id);
 
       let items = [];          // stockable items (parts and completes)
@@ -241,6 +243,7 @@
       }
 
       scanBox($('adj-scan'), pickAdjustItem);
+      $('adj-cam').addEventListener('click', () => cameraScan(pickAdjustItem));
       $('adj-location').addEventListener('change', renderAdjustPreview);
       $('adj-qty').addEventListener('input', renderAdjustPreview);
       document.querySelectorAll('input[name="adj-mode"]').forEach((r) => r.addEventListener('change', renderAdjustPreview));
@@ -301,6 +304,7 @@
       }
 
       scanBox($('tr-scan'), addTransferItem);
+      $('tr-cam').addEventListener('click', () => cameraScan(addTransferItem));
       $('tr-from').addEventListener('change', renderTransfer);
       $('tr-body').addEventListener('change', (event) => {
         const input = event.target.closest('[data-line]');

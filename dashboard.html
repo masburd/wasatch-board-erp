@@ -8,7 +8,7 @@
 </head>
 <body>
   <div id="content" hidden>
-    <p class="note">Build steps 1–4 are in place: logins, master data, inventory and purchasing. Sales numbers will appear here as those steps are built.</p>
+    <p class="note">Build steps 1–5 are in place: logins, master data, inventory, purchasing and the point of sale.</p>
 
     <div class="cards" id="cards"></div>
 
@@ -67,7 +67,14 @@
       const onOrder = openPos.error ? '!' : openPos.data.filter((p) => p.status === 'sent').length;
       const owed = openPos.error ? '!' : WBC.money(openPos.data.reduce((sum, p) => sum + Number(p.amount_owed), 0));
 
+      // Today's sales: revenue (after discount, before tax) on orders since midnight.
+      const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+      const sales = await sb.from('sales_order_totals').select('revenue').gte('order_date', midnight.toISOString());
+      const salesToday = sales.error ? '!' : WBC.money(sales.data.reduce((sum, o) => sum + Number(o.revenue), 0));
+      const ordersToday = sales.error ? '!' : sales.data.length;
+
       const cards = [
+        [salesToday, 'Sales today'], [ordersToday, 'Orders today'],
         [units, 'Units on hand'], [value, 'Inventory value'],
         [onOrder, 'POs on their way'], [owed, 'Owed to suppliers'],
         [parts, 'Parts'], [completes, 'Complete boards'], [bomLines, 'BOM lines'],

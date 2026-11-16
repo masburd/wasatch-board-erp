@@ -86,7 +86,7 @@
     (async () => {
       const me = await WBC.initPage('Purchasing');
       if (!me) return;
-      const { sb, esc, money, percent, qty, date, today, poNumber, toast, scanBox, findByCode } = WBC;
+      const { sb, esc, money, percent, qty, date, today, poNumber, toast, scanBox, findByCode, cameraScan } = WBC;
       const $ = (id) => document.getElementById(id);
 
       const STATUS = { draft: 'Draft', sent: 'Order Sent', received: 'Received', closed: 'Closed', cancelled: 'Cancelled' };
@@ -351,6 +351,7 @@
           box.innerHTML = `<div class="action-box"><h3>Receive stock</h3>
             <div class="scan">
               <input id="a-scan" placeholder="Scan each item as it is unpacked (adds 1), or type quantities above" aria-label="Scan barcode to receive" autocomplete="off">
+              <button class="btn" id="a-cam">Use camera</button>
               <button class="btn" id="a-fill">Fill all remaining</button>
             </div>
             <div class="inline-form">
@@ -408,6 +409,7 @@
         const poId = selectedId;
         let result = null, message = '';
 
+        if (button.id === 'a-cam') { cameraScan(scanReceive); return; }
         if (button.id === 'a-fill') {
           detailLines.forEach((l) => {
             const open = Number(l.qty_ordered) - Number(l.qty_received);

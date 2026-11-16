@@ -9,9 +9,9 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
-- **Steps 1–3 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, About.
-- **Step 4 (purchasing) written but not finished:** `suppliers.html`, `purchasing.html`, `sql/06` exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
-- **Next to build:** step 5, POS.
+- **Steps 1–4 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, About.
+- **Step 5 (POS) written but not finished:** `pos.html`, `sql/07`, camera-scan buttons on Inventory and Purchasing exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
+- **Next to build:** step 6, sales orders, returns and exchanges.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -22,7 +22,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 3 | `sql/03_make_me_staff.sql` | Yes, for Mason's login (run again per teammate, with their email, in the SQL Editor only) |
 | 4 | `sql/04_inventory.sql` | Yes |
 | 5 | `sql/05_starter_stock_TEMPORARY.sql` | Yes |
-| 6 | `sql/06_purchasing.sql` | **Not yet** — ask the user |
+| 6 | `sql/06_purchasing.sql` | Yes |
+| 7 | `sql/07_sales_pos.sql` | **Not yet** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -41,6 +42,10 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Business dates use Mountain time via `wbc_today()`. Backdated receipts post their ledger row at noon on that date.
 - `po_summary` and `po_line_status` views carry fill rate, days late, actual lead time, payment due date and amount owed. The step 9 scorecard and MRP (open PO quantity = `qty_open`) should build on them, not recompute.
 - Screens that take dates (sent, received, paid) let the user backdate, so late deliveries can be demonstrated.
+- `sales_orders` + `sales_order_lines` hold every sale; a POS sale is inserted already `closed` with `qty_fulfilled = qty`. Step 6 sales orders reuse the same tables with status `placed` → `fulfilled` → `closed`.
+- One order-level `discount_pct`; `tax_rate` is copied onto the order from settings. Prices and costs are read server-side in `post_pos_sale`, never trusted from the browser.
+- Money views: `sales_line_totals` (line_gross, line_net, revenue, cogs) and `sales_order_totals` (gross, discount_amount, net, tax, total, revenue, cogs). Revenue and COGS count fulfilled units only; tax is not revenue. P&L, returns and reports should build on these.
+- Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 
 ### How the user works
 

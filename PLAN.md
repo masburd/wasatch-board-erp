@@ -127,9 +127,9 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 1 | Setup: Supabase project, GitHub Pages, login, shared navigation | **Done** — live at https://masburd.github.io/wasatch-board-erp/, staff sign-in confirmed |
 | 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
 | 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
-| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **In progress** — code written and tested against a fake database only. `sql/06` not yet run in Supabase; not committed or pushed. |
-| 5 | POS: barcode scanning and receipt | **Next** |
-| 6 | Sales orders, returns and exchanges | |
+| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
+| 5 | POS: barcode scanning and receipt | **In progress** — code written and tested against a fake database only. `sql/07` not yet run in Supabase; not committed or pushed. |
+| 6 | Sales orders, returns and exchanges | **Next** |
 | 7 | Production orders and metrics | |
 | 8 | History generator (12 months, all through the ledger) | |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | |
@@ -141,30 +141,34 @@ Status last updated: 2026-11-16.
 
 ## Open issues / to-do
 
-### To finish step 4 (Mason, in this order)
+### To finish step 5 (Mason, in this order)
 
-1. **Supabase → SQL Editor:** run `sql/06_purchasing.sql`. Expected result: 4 table names (`po_receipt_lines`, `po_receipts`, `purchase_order_lines`, `purchase_orders`).
-2. **GitHub Desktop:** commit (summary `Step 4: purchasing`) and click **Push origin**.
-3. **Live site:** hard-refresh, open Purchasing, and run the test in "Try it" below.
+1. **Supabase → SQL Editor:** run `sql/07_sales_pos.sql`. Expected result: 2 table names (`sales_order_lines`, `sales_orders`).
+2. **GitHub Desktop:** commit (summary `Step 5: point of sale`) and click **Push origin**.
+3. **Live site:** hard-refresh, open Point of Sale, and run the test in "Try it" below.
+4. **Phone camera test:** open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and scan any barcode. Printed labels for our SKUs come in step 12; until then any product barcode will show "Nothing matches", which still proves the camera reads.
 
-Try it (proves receiving and weighted average cost):
-- New purchase order → Timberline Deck Works → WBC-1002 Street Deck 8.5": change unit cost to 30, quantity 10 → **Save and mark as sent today**.
-- Open the PO → **Fill all remaining** → **Post receipt**.
-- Items & BOMs: WBC-1002 cost should move from $24.00 to about $24.70 (76 on hand at $24 plus 10 at $30), and Pro Complete 8.5" should rise by the same amount.
-- Inventory → Movement history: a "PO receipt" row of +10 at $30.00.
+Try it (proves a sale reduces stock and records revenue and COGS):
+- Point of Sale, store PROVO: type `WBC-2001`, Enter; type `helmet`, Enter. Discount 10%.
+- Expected totals: subtotal $185.00, discount −$18.50, tax (7.25%) $12.07, total $178.57.
+- Complete sale → receipt appears. Inventory → Movement history shows two "Sale" rows of −1 at PROVO.
+- Dashboard: "Sales today" shows $166.50 (revenue is after discount, before tax).
 
 ### Not verified yet
 
-- `sql/06` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- `sql/07` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- Camera scanning: the library loads and the pop-up opens, but reading a real barcode through a real camera has not been tested (the build machine's browser blocks cameras). Needs the phone test above.
 - Realtime has not been tested with two real browsers on any page.
-- Barcode scanning has only been tested with typed input + Enter, not with a physical USB scanner.
+- USB barcode scanner: only tested with typed input + Enter, not a physical scanner.
+- Receipt printing has not been tried on a real printer.
 
 ### Known gaps, planned for later steps
 
 - A draft PO cannot be edited, only cancelled and re-created.
 - "Send" marks the PO as sent; it does not email the supplier.
 - Supplier scorecard, reorder point, EOQ, Due for Review: step 9 (they read the `po_summary` view built in step 4).
-- Phone-camera barcode scanning: step 5 (POS).
+- POS takes no payment details (cash/card) and has one order-level discount percentage, per the approved plan.
+- POS sales are final at the till; returns and exchanges are step 6.
 - Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history. Test POs made now will be wiped then.
 - Settings are read-only on the dashboard: an editable Settings page is still to be built (needed before step 9).
 - Customers cannot log in yet: portal and its security rules are step 11. Master data is staff-only until then.

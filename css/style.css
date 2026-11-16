@@ -176,3 +176,32 @@ td.nowrap { white-space: nowrap; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .panel-head h2 { margin: 0; }
 .inactive td { color: #9aa1ab; }
+
+/* ---- camera scanner ---- */
+#camera-view { width: 100%; min-height: 200px; background: #111; border-radius: 8px; overflow: hidden; }
+#camera-view video { width: 100% !important; }
+
+/* ---- point of sale ---- */
+.pos-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+.totals { width: 100%; }
+.totals td { border: none; padding: 4px 0; }
+.totals tr.grand td { font-size: 20px; font-weight: 700; border-top: 2px solid var(--ink); padding-top: 8px; }
+.match-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.btn.big { width: 100%; padding: 12px; font-size: 17px; margin-top: 14px; }
+
+.receipt { max-width: 380px; margin: 0 auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.receipt h3 { text-align: center; font-size: 16px; }
+.receipt .center { text-align: center; margin: 2px 0; }
+.receipt table { margin: 10px 0; }
+.receipt th, .receipt td { padding: 3px 0; border: none; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.receipt .rule td { border-top: 1px dashed #777; }
+.receipt .grand td { font-weight: 700; font-size: 15px; }
+
+@media (max-width: 900px) { .pos-grid { grid-template-columns: 1fr; } }
+
+@media print {
+  .sidebar, .topbar, .no-print, #toast { display: none !important; }
+  body { background: #fff; }
+  #content { padding: 0; }
+  .panel { border: none; padding: 0; margin: 0; }
+}

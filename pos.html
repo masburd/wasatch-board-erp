@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Point of Sale · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+
+    <!-- ============ the till ============ -->
+    <div class="pos-grid no-print" id="till">
+      <div class="panel">
+        <div class="inline-form" style="margin-bottom:14px">
+          <label>Store <select id="location"></select></label>
+          <label>Customer <select id="customer"></select></label>
+        </div>
+
+        <div class="scan">
+          <input id="scan" placeholder="Scan a barcode, or type a SKU or item name and press Enter" aria-label="Scan barcode to add to sale" autocomplete="off">
+          <button class="btn" id="camera-btn">Use camera</button>
+        </div>
+        <div class="match-list" id="matches"></div>
+
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>SKU</th><th>Item</th><th class="num">In stock here</th>
+            <th class="num">Price</th><th class="num">Qty</th><th class="num">Line total</th><th></th>
+          </tr></thead>
+          <tbody id="cart-body"></tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <h2>Sale total</h2>
+        <table class="totals">
+          <tr><td>Subtotal</td><td class="num" id="t-gross">$0.00</td></tr>
+          <tr>
+            <td><label for="discount">Discount %</label>
+              <input id="discount" class="qty" type="number" min="0" max="100" step="1" value="0" style="width:64px;margin-left:6px"></td>
+            <td class="num" id="t-discount">$0.00</td>
+          </tr>
+          <tr><td id="t-tax-label">Sales tax</td><td class="num" id="t-tax">$0.00</td></tr>
+          <tr class="grand"><td>Total</td><td class="num" id="t-total">$0.00</td></tr>
+        </table>
+        <p class="error-text" id="sale-error" role="alert"></p>
+        <button class="btn primary big" id="complete-btn">Complete sale</button>
+        <button class="btn" id="clear-btn" style="width:100%;margin-top:8px">Clear</button>
+      </div>
+    </div>
+
+    <!-- ============ receipt ============ -->
+    <div class="panel" id="receipt-panel" hidden>
+      <div class="panel-head no-print">
+        <h2>Receipt</h2>
+        <div>
+          <button class="btn" id="print-btn">Print</button>
+          <button class="btn primary" id="next-btn">Next sale</button>
+        </div>
+      </div>
+      <div class="receipt" id="receipt"></div>
+    </div>
+
+    <!-- ============ today's sales ============ -->
+    <div class="panel no-print">
+      <h2>Today's sales at this store</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Receipt</th><th>Time</th><th>Customer</th><th class="num">Units</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody id="recent-body"></tbody>
+        <tfoot><tr><td colspan="4">Total taken today</td><td class="num" id="recent-total"></td><td></td></tr></tfoot>
+      </table></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Point of Sale');
+      if (!me) return;
+      const { sb, esc, money, qty, dateTime, soNumber, toast, scanBox, findByCode, cameraScan } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      let items = [];       // sellable items with prices
+      let locations = [];
+      let customers = [];
+      let taxRate = 0;      // from the settings table
+      let levels = new Map(); // "itemId:locationId" -> on hand
+      let cart = [];        // [{ item, qty }]
+
+      const locationId = () => Number($('location').value);
+      const onHand = (itemId) => Number(levels.get(itemId + ':' + locationId()) || 0);
+      const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [itemRes, locRes, custRes, taxRes] = await Promise.all([
+          sb.from('items').select('id, sku, barcode, name, price, item_type')
+            .in('item_type', ['part', 'complete']).eq('is_active', true).order('sku'),
+          sb.from('locations').select('*').order('id'),
+          sb.from('customers').select('id, customer_no, name, customer_type').order('customer_no'),
+          sb.from('settings').select('value').eq('key', 'tax_rate').maybeSingle(),
+        ]);
+        const error = itemRes.error || locRes.error || custRes.error || taxRes.error;
+        if (error) { toast(error.message, true); return false; }
+        items = itemRes.data.filter((i) => i.price !== null);
+        locations = locRes.data;
+        customers = custRes.data;
+        taxRate = Number(taxRes.data ? taxRes.data.value : 0);
+        return true;
+      }
+
+      async function loadLevels() {
+        const { data, error } = await sb.from('inventory_levels').select('item_id, location_id, qty_on_hand');
+        if (error) { toast(error.message, true); return; }
+        levels = new Map(data.map((l) => [l.item_id + ':' + l.location_id, l.qty_on_hand]));
+        renderCart();
+      }
+
+      // Prices can be changed on the Items page; pick up the latest before each sale is shown.
+      async function refreshPrices() {
+        const { data } = await sb.from('items').select('id, price');
+        if (!data) return;
+        const price = new Map(data.map((i) => [i.id, i.price]));
+        items.forEach((i) => { if (price.has(i.id)) i.price = price.get(i.id); });
+        renderCart();
+      }
+
+      // ---------------- adding to the cart ----------------
+      function addItem(item) {
+        const line = cart.find((l) => l.item.id === item.id);
+        if (line) line.qty += 1;     // scanning the same item again adds one more
+        else cart.push({ item, qty: 1 });
+        $('matches').innerHTML = '';
+        $('sale-error').textContent = '';
+        renderCart();
+      }
+
+      // Called for every scan or typed entry.
+      function handleCode(code) {
+        const exact = findByCode(items, code);
+        if (exact) { addItem(exact); return; }
+
+        // Not a barcode or SKU: treat it as a name search.
+        const term = code.toLowerCase();
+        const found = items.filter((i) => i.name.toLowerCase().includes(term) || i.sku.toLowerCase().includes(term));
+        if (found.length === 1) { addItem(found[0]); return; }
+        if (found.length === 0) { toast('Nothing matches "' + code + '"', true); return; }
+        $('matches').innerHTML = found.slice(0, 12).map((i) =>
+          `<button class="btn small" data-pick="${i.id}">${esc(i.name)} · ${money(i.price)}</button>`).join('');
+      }
+
+      scanBox($('scan'), handleCode);
+      $('camera-btn').addEventListener('click', () => cameraScan(handleCode));
+      $('matches').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-pick]');
+        if (!button) return;
+        addItem(items.find((i) => i.id === Number(button.dataset.pick)));
+        $('scan').focus();
+      });
+
+      // ---------------- cart + totals ----------------
+      // The same arithmetic the database uses (sql/07_sales_pos.sql), shown as a
+      // preview. The receipt afterwards is read back from the database.
+      function totals() {
+        const discount = Math.min(Math.max(Number($('discount').value) || 0, 0), 100);
+        let gross = 0, net = 0;
+        cart.forEach((l) => {
+          gross += round2(l.qty * l.item.price);
+          net += round2(l.qty * l.item.price * (1 - discount / 100));
+        });
+        gross = round2(gross); net = round2(net);
+        const tax = round2(net * taxRate);
+        return { discount, gross, net, tax, total: round2(net + tax) };
+      }
+
+      function renderCart() {
+        $('cart-body').innerHTML = cart.map((l, index) => {
+          const stock = onHand(l.item.id);
+          return `<tr>
+            <td class="nowrap">${esc(l.item.sku)}</td><td>${esc(l.item.name)}</td>
+            <td class="num ${l.qty > stock ? 'bad-text' : ''}">${qty(stock)}</td>
+            <td class="num">${money(l.item.price)}</td>
+            <td class="num"><input class="qty" type="number" min="1" step="1" value="${esc(l.qty)}"
+                 data-line="${index}" aria-label="Quantity of ${esc(l.item.name)}"></td>
+            <td class="num">${money(l.qty * l.item.price)}</td>
+            <td><button class="btn small" data-remove="${index}">Remove</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted">Scan an item to start a sale.</td></tr>';
+
+        const t = totals();
+        $('t-gross').textContent = money(t.gross);
+        $('t-discount').textContent = t.gross - t.net > 0 ? '−' + money(t.gross - t.net) : money(0);
+        $('t-tax-label').textContent = 'Sales tax (' + (taxRate * 100).toFixed(2) + '%)';
+        $('t-tax').textContent = money(t.tax);
+        $('t-total').textContent = money(t.total);
+        $('complete-btn').disabled = cart.length === 0;
+      }
+
+      $('cart-body').addEventListener('change', (event) => {
+        const input = event.target.closest('[data-line]');
+        if (!input) return;
+        cart[Number(input.dataset.line)].qty = Math.max(1, Math.floor(Number(input.value) || 1));
+        renderCart();
+      });
+      $('cart-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-remove]');
+        if (!button) return;
+        cart.splice(Number(button.dataset.remove), 1);
+        renderCart();
+        $('scan').focus();
+      });
+      $('discount').addEventListener('input', renderCart);
+      $('location').addEventListener('change', () => { renderCart(); loadRecent(); });
+
+      function clearSale() {
+        cart = [];
+        $('discount').value = '0';
+        $('matches').innerHTML = '';
+        $('sale-error').textContent = '';
+        const walkIn = customers.find((c) => c.customer_type === 'walk_in');
+        if (walkIn) $('customer').value = String(walkIn.id);
+        renderCart();
+        $('scan').focus();
+      }
+      $('clear-btn').addEventListener('click', clearSale);
+
+      // ---------------- complete the sale ----------------
+      $('complete-btn').addEventListener('click', async () => {
+        if (!cart.length) return;
+        $('sale-error').textContent = '';
+        $('complete-btn').disabled = true;
+        // One database function does everything: order, lines, COGS, stock.
+        const { data: orderId, error } = await sb.rpc('post_pos_sale', {
+          p_location_id: locationId(),
+          p_customer_id: Number($('customer').value) || null,
+          p_lines: cart.map((l) => ({ item_id: l.item.id, qty: l.qty })),
+          p_discount_pct: totals().discount,
+        });
+        $('complete-btn').disabled = false;
+        if (error) { $('sale-error').textContent = error.message; return; }
+        toast('Sale ' + soNumber(orderId) + ' complete.');
+        clearSale();
+        await Promise.all([loadLevels(), loadRecent()]);
+        await showReceipt(orderId);
+      });
+
+      // ---------------- receipt ----------------
+      // Everything on the receipt is read back from the database views.
+      async function showReceipt(orderId) {
+        const [orderRes, lineRes] = await Promise.all([
+          sb.from('sales_order_totals').select('*').eq('order_id', orderId).maybeSingle(),
+          sb.from('sales_line_totals').select('*').eq('order_id', orderId).order('line_id'),
+        ]);
+        const error = orderRes.error || lineRes.error;
+        if (error || !orderRes.data) { toast(error ? error.message : 'Receipt not found', true); return; }
+        const o = orderRes.data;
+        const store = locations.find((l) => l.id === o.location_id) || {};
+        const itemById = new Map(items.map((i) => [i.id, i]));
+
+        $('receipt').innerHTML = `
+          <h3>Wasatch Board Co.</h3>
+          <p class="center">${esc(store.name)}</p>
+          <p class="center">${esc(dateTime(o.order_date))}</p>
+          <p class="center">Receipt ${esc(soNumber(o.order_id))} · ${esc(o.customer_name)}</p>
+          <table>
+            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              ${lineRes.data.map((l) => `<tr>
+                <td>${esc((itemById.get(l.item_id) || {}).name || 'Item ' + l.item_id)}</td>
+                <td class="num">${qty(l.qty)}</td>
+                <td class="num">${money(l.unit_price)}</td>
+                <td class="num">${money(l.line_gross)}</td></tr>`).join('')}
+              <tr class="rule"><td colspan="3">Subtotal</td><td class="num">${money(o.gross)}</td></tr>
+              ${Number(o.discount_amount) > 0 ? `<tr><td colspan="3">Discount (${qty(o.discount_pct)}%)</td><td class="num">−${money(o.discount_amount)}</td></tr>` : ''}
+              <tr><td colspan="3">Sales tax (${(Number(o.tax_rate) * 100).toFixed(2)}%)</td><td class="num">${money(o.tax)}</td></tr>
+              <tr class="rule grand"><td colspan="3">Total</td><td class="num">${money(o.total)}</td></tr>
+            </tbody>
+          </table>
+          <p class="center">Thank you for skating with us!</p>`;
+        $('receipt-panel').hidden = false;
+        $('receipt-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      $('print-btn').addEventListener('click', () => window.print());
+      $('next-btn').addEventListener('click', () => { $('receipt-panel').hidden = true; $('scan').focus(); });
+
+      // ---------------- today's sales ----------------
+      async function loadRecent() {
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+        const { data, error } = await sb.from('sales_order_totals').select('*')
+          .eq('channel', 'pos').eq('location_id', locationId())
+          .gte('order_date', midnight.toISOString())
+          .order('order_id', { ascending: false });
+        if (error) {
+          toast(error.message + ' — has sql/07_sales_pos.sql been run?', true);
+          return;
+        }
+        $('recent-body').innerHTML = data.map((o) => `<tr>
+          <td class="nowrap">${esc(soNumber(o.order_id))}</td>
+          <td class="nowrap">${esc(new Date(o.order_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))}</td>
+          <td>${esc(o.customer_name)}</td>
+          <td class="num">${qty(o.units)}</td>
+          <td class="num">${money(o.total)}</td>
+          <td><button class="btn small" data-receipt="${o.order_id}">Receipt</button></td>
+        </tr>`).join('') || '<tr><td colspan="6" class="muted">No sales yet today.</td></tr>';
+        $('recent-total').textContent = money(data.reduce((sum, o) => sum + Number(o.total), 0));
+      }
+      $('recent-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-receipt]');
+        if (button) showReceipt(Number(button.dataset.receipt));
+      });
+
+      // ---------------- start ----------------
+      if (!(await loadMaster())) return;
+
+      // The till runs at the stores. Start on the user's own store if they have one.
+      const stores = locations.filter((l) => l.type === 'store');
+      $('location').innerHTML = (stores.length ? stores : locations)
+        .map((l) => `<option value="${l.id}">${esc(l.code)} · ${esc(l.name)}</option>`).join('');
+      if (stores.some((l) => l.id === me.profile.default_location_id)) {
+        $('location').value = String(me.profile.default_location_id);
+      }
+      $('customer').innerHTML = customers
+        .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+
+      clearSale();
+      await Promise.all([loadLevels(), loadRecent()]);
+
+      // Realtime: stock sold or received elsewhere, and other tills' sales, show up here.
+      let stockTimer, salesTimer;
+      sb.channel('pos-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, () => {
+          clearTimeout(stockTimer); stockTimer = setTimeout(loadLevels, 300);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => {
+          clearTimeout(salesTimer); salesTimer = setTimeout(loadRecent, 300);
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'items' }, () => refreshPrices())
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

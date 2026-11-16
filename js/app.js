@@ -14,7 +14,7 @@ const WBC = (() => {
   const NAV = [
     { group: 'Sell', links: [
       { href: 'dashboard.html', label: 'Dashboard', built: true },
-      { href: 'pos.html', label: 'Point of Sale' },
+      { href: 'pos.html', label: 'Point of Sale', built: true },
       { href: 'sales-orders.html', label: 'Sales Orders' },
       { href: 'returns.html', label: 'Returns & Exchanges' },
     ]},
@@ -67,8 +67,9 @@ const WBC = (() => {
       el = document.createElement('div');
       el.id = 'toast';
       el.setAttribute('role', 'status');
-      document.body.appendChild(el);
     }
+    // An open pop-up sits above the page, so show the message inside it.
+    (document.querySelector('dialog[open]') || document.body).appendChild(el);
     el.textContent = message;
     el.className = isError ? 'show error' : 'show';
     clearTimeout(toastTimer);
@@ -96,6 +97,75 @@ const WBC = (() => {
     return items.find((i) => (i.barcode || '').toLowerCase() === wanted)
         || items.find((i) => (i.sku || '').toLowerCase() === wanted)
         || null;
+  }
+
+  // --- phone / laptop camera scanning (the backup to a USB scanner) --------
+  // Opens a pop-up showing the camera. Each barcode it reads is passed to
+  // onCode(code), exactly as if a USB scanner had typed it. The scanning
+  // library (html5-qrcode) is only downloaded the first time this is used.
+  // Cameras only work on https pages (the live site) or localhost.
+  let cameraLibrary = null;
+  function loadCameraLibrary() {
+    if (!cameraLibrary) {
+      cameraLibrary = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.onload = resolve;
+        script.onerror = () => { cameraLibrary = null; reject(new Error('Could not download the camera scanner.')); };
+        document.head.appendChild(script);
+      });
+    }
+    return cameraLibrary;
+  }
+
+  async function cameraScan(onCode) {
+    let dialog = document.getElementById('camera-dialog');
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.id = 'camera-dialog';
+      dialog.innerHTML = `
+        <h2>Scan with camera</h2>
+        <div id="camera-view"></div>
+        <p class="muted" id="camera-status" role="status"></p>
+        <div class="form-actions"><button type="button" class="btn primary" id="camera-done">Done</button></div>`;
+      document.body.appendChild(dialog);
+      dialog.querySelector('#camera-done').addEventListener('click', () => dialog.close());
+    }
+    const status = dialog.querySelector('#camera-status');
+    status.textContent = 'Starting camera…';
+    dialog.showModal();
+
+    let reader = null;
+    dialog.addEventListener('close', async () => {
+      try { if (reader && reader.isScanning) await reader.stop(); } catch (e) { /* already stopped */ }
+      try { if (reader) reader.clear(); } catch (e) { /* nothing to clear */ }
+    }, { once: true });
+
+    try {
+      await loadCameraLibrary();
+      reader = new window.Html5Qrcode('camera-view');
+      let lastCode = '', lastTime = 0;
+      await reader.start(
+        { facingMode: 'environment' },                     // the back camera on a phone
+        { fps: 10, qrbox: { width: 260, height: 130 } },
+        (code) => {
+          // The camera sees the same barcode many times a second: count it once.
+          const now = Date.now();
+          if (code === lastCode && now - lastTime < 2000) return;
+          lastCode = code; lastTime = now;
+          status.textContent = 'Scanned ' + code;
+          onCode(code);
+        },
+        () => { /* no barcode in this frame: keep looking */ });
+      status.textContent = 'Point the camera at a barcode.';
+    } catch (error) {
+      status.textContent = 'Camera not available: ' + (error && error.message ? error.message : error) +
+        '. Allow camera access, or type the SKU into the scan box instead.';
+    }
+  }
+
+  function soNumber(id) {
+    return 'SO-' + String(id).padStart(5, '0');
   }
 
   function qty(value) {
@@ -207,6 +277,6 @@ const WBC = (() => {
 
   return {
     sb, configured, esc, money, percent, qty, dateTime, today, date, poNumber, toast,
-    scanBox, findByCode, initPage, signOut, showSetupNotice,
+    scanBox, findByCode, cameraScan, soNumber, initPage, signOut, showSetupNotice,
   };
 })();

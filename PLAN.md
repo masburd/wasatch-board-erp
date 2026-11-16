@@ -128,7 +128,7 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
 | 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
 | 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
-| 5 | POS: barcode scanning and receipt | **In progress** — code written and tested against a fake database only. `sql/07` not yet run in Supabase; not committed or pushed. |
+| 5 | POS: barcode scanning and receipt | **In progress** — pages are pushed and live. Still to confirm: `sql/07` run in Supabase, the test sale, and the phone camera test (see Open issues). |
 | 6 | Sales orders, returns and exchanges | **Next** |
 | 7 | Production orders and metrics | |
 | 8 | History generator (12 months, all through the ledger) | |
@@ -137,26 +137,28 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
-Status last updated: 2026-11-16.
+Status last updated: 2026-11-16 (end of session 2).
 
 ## Open issues / to-do
 
 ### To finish step 5 (Mason, in this order)
 
-1. **Supabase → SQL Editor:** run `sql/07_sales_pos.sql`. Expected result: 2 table names (`sales_order_lines`, `sales_orders`).
-2. **GitHub Desktop:** commit (summary `Step 5: point of sale`) and click **Push origin**.
-3. **Live site:** hard-refresh, open Point of Sale, and run the test in "Try it" below.
-4. **Phone camera test:** open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and scan any barcode. Printed labels for our SKUs come in step 12; until then any product barcode will show "Nothing matches", which still proves the camera reads.
+The step 5 pages are already on GitHub and live. What was not confirmed at the end of session 2:
+
+1. **Supabase → SQL Editor:** run `sql/07_sales_pos.sql` if it has not been run. Expected result: 2 table names (`sales_order_lines`, `sales_orders`). Running it twice is safe. Until it is run, the Point of Sale page and the dashboard's "Sales today" card show an error.
+2. **Live site:** hard-refresh, open Point of Sale, and run the test in "Try it" below.
+3. **Phone camera test:** open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and scan any barcode. Printed labels for our SKUs come in step 12; until then any product barcode will show "Nothing matches", which still proves the camera reads.
+4. **GitHub Desktop:** commit (summary `Update notes`) and **Push origin**, to upload the note changes made at the end of session 2.
 
 Try it (proves a sale reduces stock and records revenue and COGS):
 - Point of Sale, store PROVO: type `WBC-2001`, Enter; type `helmet`, Enter. Discount 10%.
 - Expected totals: subtotal $185.00, discount −$18.50, tax (7.25%) $12.07, total $178.57.
 - Complete sale → receipt appears. Inventory → Movement history shows two "Sale" rows of −1 at PROVO.
-- Dashboard: "Sales today" shows $166.50 (revenue is after discount, before tax).
+- Dashboard: "Sales today" shows $166.50 (revenue is after discount, before tax) if this is the day's only sale.
 
 ### Not verified yet
 
-- `sql/07` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- `sql/07` was not confirmed as run. If it errors on first run, paste the error into Claude Code.
 - Camera scanning: the library loads and the pop-up opens, but reading a real barcode through a real camera has not been tested (the build machine's browser blocks cameras). Needs the phone test above.
 - Realtime has not been tested with two real browsers on any page.
 - USB barcode scanner: only tested with typed input + Enter, not a physical scanner.

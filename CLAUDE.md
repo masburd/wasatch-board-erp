@@ -5,12 +5,13 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - [SPEC.md](SPEC.md) — all 12 required capabilities, seed data, formulas. The source of truth for requirements.
 - [PLAN.md](PLAN.md) — approved table design, transaction flows, screens, build order and status. Update the status table as steps finish.
 
-## Where things stand (updated 2026-11-16)
+## Where things stand (updated 2026-11-16, end of session 2)
 
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
 - **Steps 1–4 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, About.
-- **Step 5 (POS) written but not finished:** `pos.html`, `sql/07`, camera-scan buttons on Inventory and Purchasing exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
+- **Step 5 (POS) pushed and live but not confirmed working:** `pos.html` and the camera-scan buttons are on GitHub. Whether `sql/07` has been run, and whether the test sale and phone camera test passed, was not confirmed. First ask the user, then follow PLAN.md → "Open issues / to-do".
+- All code through step 5 is committed and pushed (last commit "Step 5: point of sale"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
 - **Next to build:** step 6, sales orders, returns and exchanges.
 
 ### SQL files and whether they have been run in Supabase
@@ -23,7 +24,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 4 | `sql/04_inventory.sql` | Yes |
 | 5 | `sql/05_starter_stock_TEMPORARY.sql` | Yes |
 | 6 | `sql/06_purchasing.sql` | Yes |
-| 7 | `sql/07_sales_pos.sql` | **Not yet** — ask the user |
+| 7 | `sql/07_sales_pos.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -49,6 +50,8 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 
 ### How the user works
 
+- Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.
+- Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. Not yet confirmed whether they can sign in or whether they are marked `staff` in `profiles`; ask before assuming. A login that is not staff sees a "Staff access needed" message.
 - Mason is new to Supabase, git and GitHub. He publishes with **GitHub Desktop** (commit, then Push origin); the command line here has no GitHub login, so `git push` fails. Do not ask him to use terminal git.
 - Commits made here use the repo-local noreply email. Do not put real email addresses in any file: the repo is public.
 - Browser pages cannot be tested against the real database from here. Test page logic with a throwaway copy plus a fake `supabase` object in the scratchpad, served with `python3 -m http.server` run from Bash (the preview launcher fails on this machine), and say clearly that SQL is unverified until the user runs it.

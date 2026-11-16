@@ -205,3 +205,5 @@ td.nowrap { white-space: nowrap; }
   #content { padding: 0; }
   .panel { border: none; padding: 0; margin: 0; }
 }
+
+a.btn { text-decoration: none; display: inline-block; }

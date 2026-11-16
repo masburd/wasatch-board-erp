@@ -9,10 +9,10 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
-- **Steps 1–4 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, About.
-- **Step 5 (POS) pushed and live but not confirmed working:** `pos.html` and the camera-scan buttons are on GitHub. Whether `sql/07` has been run, and whether the test sale and phone camera test passed, was not confirmed. First ask the user, then follow PLAN.md → "Open issues / to-do".
-- All code through step 5 is committed and pushed (last commit "Step 5: point of sale"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
-- **Next to build:** step 6, sales orders, returns and exchanges.
+- **Steps 1–5 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, Point of Sale, About.
+- **Step 5 (POS) done and live:** test sale confirmed. The phone camera test was skipped by the user for now; camera scanning with a real camera is still unverified.
+- **Step 6 (sales orders, returns, exchanges) written but not finished:** `sales-orders.html`, `returns.html`, `sql/08` exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
+- **Next to build:** step 7, production orders and metrics.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -24,7 +24,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 4 | `sql/04_inventory.sql` | Yes |
 | 5 | `sql/05_starter_stock_TEMPORARY.sql` | Yes |
 | 6 | `sql/06_purchasing.sql` | Yes |
-| 7 | `sql/07_sales_pos.sql` | **Not confirmed** — ask the user |
+| 7 | `sql/07_sales_pos.sql` | Yes |
+| 8 | `sql/08_sales_orders_returns.sql` | **Not yet** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -46,12 +47,16 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - `sales_orders` + `sales_order_lines` hold every sale; a POS sale is inserted already `closed` with `qty_fulfilled = qty`. Step 6 sales orders reuse the same tables with status `placed` → `fulfilled` → `closed`.
 - One order-level `discount_pct`; `tax_rate` is copied onto the order from settings. Prices and costs are read server-side in `post_pos_sale`, never trusted from the browser.
 - Money views: `sales_line_totals` (line_gross, line_net, revenue, cogs) and `sales_order_totals` (gross, discount_amount, net, tax, total, revenue, cogs). Revenue and COGS count fulfilled units only; tax is not revenue. P&L, returns and reports should build on these.
+- Sales orders: `create_sales_order` (placed, no stock movement) → `fulfill_sales_order` (ships min(open, on hand at the order's location); partial leaves the order placed) → `close_sales_order`. `cancel_sales_order` cancels, or trims unshipped lines if partly shipped. Stock is not reserved.
+- Backorders are not a table: view `open_order_lines` lists every waiting line with `availability` (ready / transfer / on_order / reorder / build) and `est_available_date`. A backorder is any row that is not `ready`. MRP (step 9) should take confirmed demand from placed orders via this view or the same tables.
+- Returns: `post_return` handles refund and exchange. Reason codes with `restock = false` put nothing back in stock; views `return_line_totals` / `return_totals` give `refund_net`, `cogs_reversed` and `write_off`. For the P&L: net sales = revenue − refund_net; COGS = cogs − cogs_reversed; write_off goes on the scrap/adjustments line. An exchange's replacement is a new till sale made by calling `post_pos_sale` inside `post_return`.
+- Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 
 ### How the user works
 
 - Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.
-- Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. Not yet confirmed whether they can sign in or whether they are marked `staff` in `profiles`; ask before assuming. A login that is not staff sees a "Staff access needed" message.
+- Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. He confirmed they can sign in and are marked `staff`.
 - Mason is new to Supabase, git and GitHub. He publishes with **GitHub Desktop** (commit, then Push origin); the command line here has no GitHub login, so `git push` fails. Do not ask him to use terminal git.
 - Commits made here use the repo-local noreply email. Do not put real email addresses in any file: the repo is public.
 - Browser pages cannot be tested against the real database from here. Test page logic with a throwaway copy plus a fake `supabase` object in the scratchpad, served with `python3 -m http.server` run from Bash (the preview launcher fails on this machine), and say clearly that SQL is unverified until the user runs it.

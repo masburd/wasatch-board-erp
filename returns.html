@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Returns & Exchanges · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+
+    <!-- ============ find the sale ============ -->
+    <div class="panel" id="find-panel">
+      <h2>1. Find the original sale</h2>
+      <div class="scan">
+        <input id="find-box" placeholder="Type the receipt number (for example SO-00012 or 12) and press Enter" aria-label="Receipt number" autocomplete="off">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th>Location</th><th class="num">Units</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody id="find-body"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">The 30 most recent sales with something fulfilled.</p>
+    </div>
+
+    <!-- ============ the return ============ -->
+    <div class="panel" id="return-panel" hidden>
+      <div class="panel-head">
+        <h2 id="r-title"></h2>
+        <button class="btn small" id="r-close">Choose a different sale</button>
+      </div>
+
+      <div class="inline-form" style="margin-bottom:14px">
+        <label>Brought back to <select id="r-location"></select></label>
+        <label style="flex:1;min-width:220px">Note (optional) <input id="r-note" maxlength="200"></label>
+      </div>
+
+      <h3 style="font-size:15px;margin-bottom:8px">2. What is coming back?</h3>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>SKU</th><th>Item</th><th class="num">Sold</th><th class="num">Already returned</th>
+          <th class="num">Paid each</th><th class="num">Return qty</th><th>Reason</th><th>Goes back into stock?</th>
+        </tr></thead>
+        <tbody id="r-body"></tbody>
+      </table></div>
+
+      <h3 style="font-size:15px;margin:18px 0 8px">3. Exchange: replacement items (leave empty for a refund)</h3>
+      <div class="scan">
+        <input id="x-scan" placeholder="Scan a barcode, or type a SKU or item name and press Enter" aria-label="Scan barcode to add a replacement item" autocomplete="off">
+        <button type="button" class="btn" id="x-cam">Use camera</button>
+      </div>
+      <div class="match-list" id="x-matches"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>SKU</th><th>Item</th><th class="num">In stock here</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Line total</th><th></th></tr></thead>
+        <tbody id="x-body"></tbody>
+      </table></div>
+
+      <h3 style="font-size:15px;margin:18px 0 8px">4. Settle up</h3>
+      <table class="totals" style="max-width:420px">
+        <tr><td>Refund for returned items</td><td class="num" id="s-refund">$0.00</td></tr>
+        <tr><td>Sales tax refunded</td><td class="num" id="s-refund-tax">$0.00</td></tr>
+        <tr><td>Replacement items, with tax</td><td class="num" id="s-exchange">$0.00</td></tr>
+        <tr class="grand"><td id="s-balance-label">Refund to customer</td><td class="num" id="s-balance">$0.00</td></tr>
+      </table>
+      <p class="error-text" id="r-error" role="alert"></p>
+      <div class="form-actions"><button class="btn primary" id="r-post">Post return</button></div>
+    </div>
+
+    <!-- ============ result ============ -->
+    <div class="panel" id="done-panel" hidden>
+      <div class="panel-head">
+        <h2 id="done-title"></h2>
+        <button class="btn primary" id="done-next">Next return</button>
+      </div>
+      <div class="facts" id="done-facts"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Item</th><th class="num">Qty</th><th>Reason</th><th>Stock</th><th class="num">Refund</th><th class="num">Cost reversed</th><th class="num">Written off</th></tr></thead>
+        <tbody id="done-body"></tbody>
+      </table></div>
+    </div>
+
+    <!-- ============ history ============ -->
+    <div class="panel">
+      <h2>Recent returns</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Return</th><th>Date</th><th>Original sale</th><th>Customer</th><th>Type</th><th class="num">Units</th>
+          <th class="num">Refund incl. tax</th><th class="num">Written off</th><th>Replacement sale</th><th></th>
+        </tr></thead>
+        <tbody id="hist-body"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Returns & Exchanges');
+      if (!me) return;
+      const { sb, esc, money, qty, dateOf, soNumber, toast, scanBox, findByCode, cameraScan } = WBC;
+      const $ = (id) => document.getElementById(id);
+      const rmaNumber = (id) => 'RT-' + String(id).padStart(5, '0');
+      const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+      let items = [], locations = [], reasons = [];
+      let taxRate = 0;            // today's rate, used for replacement items
+      let levels = new Map();     // "itemId:locationId" -> on hand
+      let recentSales = [];
+      let order = null;           // the sale being returned (row from sales_order_totals)
+      let soldLines = [];         // its lines, each with .returned (already returned)
+      let exchange = [];          // replacement items: [{ item, qty }]
+
+      const itemById = () => new Map(items.map((i) => [i.id, i]));
+      const locCode = (id) => (locations.find((l) => l.id === id) || {}).code || '';
+      const returnLocationId = () => Number($('r-location').value);
+      const onHand = (itemId) => Number(levels.get(itemId + ':' + returnLocationId()) || 0);
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [itemRes, locRes, reasonRes, taxRes] = await Promise.all([
+          sb.from('items').select('id, sku, barcode, name, price, item_type').eq('is_active', true).order('sku'),
+          sb.from('locations').select('*').order('id'),
+          sb.from('reason_codes').select('*').eq('kind', 'return').eq('is_active', true).order('label'),
+          sb.from('settings').select('value').eq('key', 'tax_rate').maybeSingle(),
+        ]);
+        const error = itemRes.error || locRes.error || reasonRes.error || taxRes.error;
+        if (error) { toast(error.message, true); return false; }
+        items = itemRes.data; locations = locRes.data; reasons = reasonRes.data;
+        taxRate = Number(taxRes.data ? taxRes.data.value : 0);
+        return true;
+      }
+
+      async function loadLists() {
+        const [salesRes, histRes, levelRes] = await Promise.all([
+          sb.from('sales_order_totals').select('*').gt('revenue', 0).order('order_id', { ascending: false }).limit(30),
+          sb.from('return_totals').select('*').order('return_id', { ascending: false }).limit(50),
+          sb.from('inventory_levels').select('item_id, location_id, qty_on_hand'),
+        ]);
+        const error = salesRes.error || histRes.error || levelRes.error;
+        if (error) {
+          toast(error.message + ' — has sql/08_sales_orders_returns.sql been run?', true);
+          return;
+        }
+        recentSales = salesRes.data;
+        levels = new Map(levelRes.data.map((l) => [l.item_id + ':' + l.location_id, l.qty_on_hand]));
+
+        $('find-body').innerHTML = recentSales.map((o) => `<tr>
+          <td class="nowrap">${esc(soNumber(o.order_id))}</td>
+          <td class="nowrap">${esc(dateOf(o.order_date))}</td>
+          <td>${esc(o.customer_name)}</td>
+          <td>${esc(locCode(o.location_id))}</td>
+          <td class="num">${qty(o.units)}</td>
+          <td class="num">${money(o.total)}</td>
+          <td><button class="btn small" data-order="${o.order_id}">Select</button></td>
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">No sales yet.</td></tr>';
+
+        $('hist-body').innerHTML = histRes.data.map((r) => `<tr>
+          <td class="nowrap">${esc(rmaNumber(r.return_id))}</td>
+          <td class="nowrap">${esc(dateOf(r.return_date))}</td>
+          <td class="nowrap">${esc(soNumber(r.order_id))}</td>
+          <td>${esc(r.customer_name)}</td>
+          <td>${r.return_type === 'exchange' ? 'Exchange' : 'Refund'}</td>
+          <td class="num">${qty(r.units)}</td>
+          <td class="num">${money(r.refund_total)}</td>
+          <td class="num">${Number(r.write_off) > 0 ? money(r.write_off) : '—'}</td>
+          <td class="nowrap">${r.exchange_order_id ? esc(soNumber(r.exchange_order_id)) : '—'}</td>
+          <td><button class="btn small" data-return="${r.return_id}">View</button></td>
+        </tr>`).join('') || '<tr><td colspan="10" class="muted">No returns yet.</td></tr>';
+
+        renderExchange();
+      }
+
+      // ---------------- step 1: choose the sale ----------------
+      async function openOrder(orderId) {
+        const [orderRes, lineRes] = await Promise.all([
+          sb.from('sales_order_totals').select('*').eq('order_id', orderId).maybeSingle(),
+          sb.from('sales_line_totals').select('*').eq('order_id', orderId).order('line_id'),
+        ]);
+        const error = orderRes.error || lineRes.error;
+        if (error) { toast(error.message, true); return; }
+        if (!orderRes.data) { toast('No sale with number ' + soNumber(orderId), true); return; }
+        if (orderRes.data.status === 'cancelled' || !lineRes.data.some((l) => Number(l.qty_fulfilled) > 0)) {
+          toast(soNumber(orderId) + ' has nothing fulfilled, so there is nothing to return.', true);
+          return;
+        }
+
+        // How much of each line has already come back on earlier returns.
+        const lineIds = lineRes.data.map((l) => l.line_id);
+        const { data: earlier, error: earlierError } = await sb.from('return_lines')
+          .select('order_line_id, qty').in('order_line_id', lineIds);
+        if (earlierError) { toast(earlierError.message, true); return; }
+        const returned = new Map();
+        earlier.forEach((r) => returned.set(r.order_line_id, (returned.get(r.order_line_id) || 0) + Number(r.qty)));
+
+        order = orderRes.data;
+        soldLines = lineRes.data.filter((l) => Number(l.qty_fulfilled) > 0)
+          .map((l) => ({ ...l, returned: returned.get(l.line_id) || 0 }));
+        exchange = [];
+        $('r-location').value = String(order.location_id);
+        $('r-note').value = '';
+        $('r-error').textContent = '';
+        $('r-title').textContent = 'Return against ' + soNumber(order.order_id) + ' · ' + order.customer_name +
+          ' · ' + dateOf(order.order_date);
+        $('find-panel').hidden = true;
+        $('done-panel').hidden = true;
+        $('return-panel').hidden = false;
+        renderSold();
+        renderExchange();
+      }
+
+      scanBox($('find-box'), (text) => {
+        const number = Number(text.replace(/[^0-9]/g, ''));
+        if (!number) { toast('Type a receipt number, for example SO-00012', true); return; }
+        openOrder(number);
+      });
+      $('find-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-order]');
+        if (button) openOrder(Number(button.dataset.order));
+      });
+      $('r-close').addEventListener('click', () => {
+        order = null; $('return-panel').hidden = true; $('find-panel').hidden = false; $('find-box').focus();
+      });
+
+      // ---------------- step 2: returned lines ----------------
+      function renderSold() {
+        const byId = itemById();
+        const reasonOptions = reasons.map((r) => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
+        $('r-body').innerHTML = soldLines.map((l, index) => {
+          const item = byId.get(l.item_id) || {};
+          const left = Number(l.qty_fulfilled) - l.returned;
+          const paidEach = round2(Number(l.unit_price) * (1 - Number(order.discount_pct) / 100));
+          return `<tr data-sold="${index}">
+            <td class="nowrap">${esc(item.sku)}</td><td>${esc(item.name)}</td>
+            <td class="num">${qty(l.qty_fulfilled)}</td>
+            <td class="num">${l.returned ? qty(l.returned) : '—'}</td>
+            <td class="num">${money(paidEach)}</td>
+            <td class="num"><input class="qty r-qty" type="number" min="0" max="${left}" step="1" placeholder="0"
+                 aria-label="Quantity of ${esc(item.name)} to return" ${left <= 0 ? 'disabled' : ''}></td>
+            <td><select class="r-reason" aria-label="Reason for returning ${esc(item.name)}" ${left <= 0 ? 'disabled' : ''}>${reasonOptions}</select></td>
+            <td class="r-restock muted"></td>
+          </tr>`;
+        }).join('');
+        updateSummary();
+      }
+
+      // Read what has been typed into the returned-lines table.
+      function returnLines() {
+        return [...document.querySelectorAll('#r-body tr[data-sold]')].map((tr) => {
+          const sold = soldLines[Number(tr.dataset.sold)];
+          const reason = reasons.find((r) => r.code === tr.querySelector('.r-reason').value);
+          // Never more than is still returnable on that line.
+          const left = Number(sold.qty_fulfilled) - sold.returned;
+          const typed = Math.floor(Number(tr.querySelector('.r-qty').value) || 0);
+          return { sold, reason, row: tr, qty: Math.max(0, Math.min(typed, left)) };
+        });
+      }
+
+      // ---------------- step 3: replacement items ----------------
+      function addExchange(item) {
+        const line = exchange.find((l) => l.item.id === item.id);
+        if (line) line.qty += 1; else exchange.push({ item, qty: 1 });
+        $('x-matches').innerHTML = '';
+        renderExchange();
+      }
+
+      function handleCode(code) {
+        const sellable = items.filter((i) => i.price !== null && i.item_type !== 'custom');
+        const exact = findByCode(sellable, code);
+        if (exact) { addExchange(exact); return; }
+        const term = code.toLowerCase();
+        const found = sellable.filter((i) => i.name.toLowerCase().includes(term) || i.sku.toLowerCase().includes(term));
+        if (found.length === 1) { addExchange(found[0]); return; }
+        if (found.length === 0) { toast('Nothing matches "' + code + '"', true); return; }
+        $('x-matches').innerHTML = found.slice(0, 12).map((i) =>
+          `<button class="btn small" data-pick="${i.id}">${esc(i.name)} · ${money(i.price)}</button>`).join('');
+      }
+
+      function renderExchange() {
+        $('x-body').innerHTML = exchange.map((l, index) => {
+          const stock = onHand(l.item.id);
+          return `<tr>
+            <td class="nowrap">${esc(l.item.sku)}</td><td>${esc(l.item.name)}</td>
+            <td class="num ${l.qty > stock ? 'bad-text' : ''}">${qty(stock)}</td>
+            <td class="num">${money(l.item.price)}</td>
+            <td class="num"><input class="qty" type="number" min="1" step="1" value="${esc(l.qty)}" data-line="${index}" aria-label="Quantity of ${esc(l.item.name)}"></td>
+            <td class="num">${money(l.qty * l.item.price)}</td>
+            <td><button class="btn small" data-remove="${index}">Remove</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted">No replacement items: this will be a refund.</td></tr>';
+        if (order) updateSummary();
+      }
+
+      scanBox($('x-scan'), handleCode);
+      $('x-cam').addEventListener('click', () => cameraScan(handleCode));
+      $('x-matches').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-pick]');
+        if (button) { addExchange(items.find((i) => i.id === Number(button.dataset.pick))); $('x-scan').focus(); }
+      });
+      $('x-body').addEventListener('change', (event) => {
+        const input = event.target.closest('[data-line]');
+        if (!input) return;
+        exchange[Number(input.dataset.line)].qty = Math.max(1, Math.floor(Number(input.value) || 1));
+        renderExchange();
+      });
+      $('x-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-remove]');
+        if (button) { exchange.splice(Number(button.dataset.remove), 1); renderExchange(); }
+      });
+      $('r-location').addEventListener('change', renderExchange);
+      $('r-body').addEventListener('input', updateSummary);
+      $('r-body').addEventListener('change', updateSummary);
+
+      // ---------------- step 4: settle up (a preview; the database decides) ----------------
+      function updateSummary() {
+        let refundNet = 0;
+        returnLines().forEach((l) => {
+          const paidEach = round2(Number(l.sold.unit_price) * (1 - Number(order.discount_pct) / 100));
+          refundNet += round2(l.qty * paidEach);
+          l.row.querySelector('.r-restock').textContent = l.qty > 0 && l.reason
+            ? (l.reason.restock ? 'Yes: back on the shelf' : 'No: written off') : '';
+        });
+        refundNet = round2(refundNet);
+        const refundTax = round2(refundNet * Number(order.tax_rate));
+        const exchangeNet = round2(exchange.reduce((sum, l) => sum + round2(l.qty * l.item.price), 0));
+        const exchangeTotal = round2(exchangeNet + round2(exchangeNet * taxRate));
+        const balance = round2(exchangeTotal - refundNet - refundTax);
+
+        $('s-refund').textContent = money(refundNet);
+        $('s-refund-tax').textContent = money(refundTax);
+        $('s-exchange').textContent = money(exchangeTotal);
+        $('s-balance-label').textContent = balance > 0 ? 'Customer pays' : 'Refund to customer';
+        $('s-balance').textContent = money(Math.abs(balance));
+        $('r-post').textContent = exchange.length ? 'Post exchange' : 'Post return';
+      }
+
+      $('r-post').addEventListener('click', async () => {
+        $('r-error').textContent = '';
+        const lines = returnLines().filter((l) => l.qty > 0)
+          .map((l) => ({ line_id: l.sold.line_id, qty: l.qty, reason_code: l.reason.code }));
+        if (!lines.length) { $('r-error').textContent = 'Enter a return quantity on at least one line.'; return; }
+
+        $('r-post').disabled = true;
+        // One database function does the whole return (and the replacement sale, for an exchange).
+        const { data: returnId, error } = await sb.rpc('post_return', {
+          p_order_id: order.order_id,
+          p_location_id: returnLocationId(),
+          p_lines: lines,
+          p_exchange_lines: exchange.length ? exchange.map((l) => ({ item_id: l.item.id, qty: l.qty })) : null,
+          p_note: $('r-note').value.trim() || null,
+        });
+        $('r-post').disabled = false;
+        if (error) { $('r-error').textContent = error.message; return; }
+        toast(rmaNumber(returnId) + ' posted.');
+        order = null; exchange = [];
+        $('return-panel').hidden = true;
+        await loadLists();
+        await showReturn(returnId);
+      });
+
+      // ---------------- result / view a past return ----------------
+      // Everything shown here is read back from the database views.
+      async function showReturn(returnId) {
+        const [headRes, lineRes] = await Promise.all([
+          sb.from('return_totals').select('*').eq('return_id', returnId).maybeSingle(),
+          sb.from('return_line_totals').select('*').eq('return_id', returnId).order('return_line_id'),
+        ]);
+        const error = headRes.error || lineRes.error;
+        if (error || !headRes.data) { toast(error ? error.message : 'Return not found', true); return; }
+        const r = headRes.data;
+        const byId = itemById();
+        const reasonLabel = new Map(reasons.map((x) => [x.code, x.label]));
+
+        $('done-title').textContent = rmaNumber(r.return_id) + ' · ' +
+          (r.return_type === 'exchange' ? 'Exchange' : 'Refund') + ' against ' + soNumber(r.order_id);
+        const fact = (label, value) => `<div><span>${esc(label)}</span>${value}</div>`;
+        const balance = Number(r.balance_due);
+        $('done-facts').innerHTML = [
+          fact('Customer', esc(r.customer_name)),
+          fact('Returned to', esc(locCode(r.location_id))),
+          fact('Refund', money(r.refund_net) + ` <span class="muted">+ ${money(r.refund_tax)} tax</span>`),
+          r.exchange_order_id ? fact('Replacement sale', esc(soNumber(r.exchange_order_id)) + ' · ' + money(r.exchange_total)) : '',
+          fact(balance > 0 ? 'Customer paid' : 'Refunded to customer', '<strong>' + money(Math.abs(balance)) + '</strong>'),
+          fact('Cost of goods reversed', money(r.cogs_reversed)),
+          fact('Written off (not restocked)', money(r.write_off)),
+          r.note ? fact('Note', esc(r.note)) : '',
+        ].join('');
+        $('done-body').innerHTML = lineRes.data.map((l) => `<tr>
+          <td>${esc((byId.get(l.item_id) || {}).name)}</td>
+          <td class="num">${qty(l.qty)}</td>
+          <td>${esc(reasonLabel.get(l.reason_code) || l.reason_code)}</td>
+          <td>${l.restocked ? 'Restocked' : '<span class="bad-text">Not restocked</span>'}</td>
+          <td class="num">${money(l.refund_net)}</td>
+          <td class="num">${money(l.cogs_reversed)}</td>
+          <td class="num">${Number(l.write_off) > 0 ? money(l.write_off) : '—'}</td>
+        </tr>`).join('');
+        $('done-panel').hidden = false;
+        $('done-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      $('hist-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-return]');
+        if (button) showReturn(Number(button.dataset.return));
+      });
+      $('done-next').addEventListener('click', () => {
+        $('done-panel').hidden = true; $('find-panel').hidden = false; $('find-box').focus();
+      });
+
+      // ---------------- start ----------------
+      if (!(await loadMaster())) return;
+      $('r-location').innerHTML = locations.map((l) =>
+        `<option value="${l.id}">${esc(l.code)} · ${esc(l.name)}</option>`).join('');
+      await loadLists();
+
+      // Arriving from a sales order's "Return or exchange" button.
+      const fromLink = Number(new URLSearchParams(window.location.search).get('order'));
+      if (fromLink) await openOrder(fromLink); else $('find-box').focus();
+    })();
+  </script>
+</body>
+</html>

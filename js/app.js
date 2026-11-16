@@ -15,8 +15,8 @@ const WBC = (() => {
     { group: 'Sell', links: [
       { href: 'dashboard.html', label: 'Dashboard', built: true },
       { href: 'pos.html', label: 'Point of Sale', built: true },
-      { href: 'sales-orders.html', label: 'Sales Orders' },
-      { href: 'returns.html', label: 'Returns & Exchanges' },
+      { href: 'sales-orders.html', label: 'Sales Orders', built: true },
+      { href: 'returns.html', label: 'Returns & Exchanges', built: true },
     ]},
     { group: 'Stock', links: [
       { href: 'inventory.html', label: 'Inventory', built: true },
@@ -193,6 +193,12 @@ const WBC = (() => {
     });
   }
 
+  // Show a stored moment in time (a timestamp) as a date in the viewer's time zone.
+  function dateOf(timestamp) {
+    if (!timestamp) return '—';
+    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
   function poNumber(id) {
     return 'PO-' + String(id).padStart(5, '0');
   }
@@ -276,7 +282,7 @@ const WBC = (() => {
   }
 
   return {
-    sb, configured, esc, money, percent, qty, dateTime, today, date, poNumber, toast,
+    sb, configured, esc, money, percent, qty, dateTime, today, date, dateOf, poNumber, toast,
     scanBox, findByCode, cameraScan, soNumber, initPage, signOut, showSetupNotice,
   };
 })();

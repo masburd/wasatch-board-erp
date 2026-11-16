@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sales Orders · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+
+    <!-- ============ order list ============ -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Sales orders</h2>
+        <div class="toolbar" style="margin:0">
+          <select id="status-filter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="placed">Order Placed</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <label class="radio-row" style="margin:0"><span><input type="checkbox" id="show-pos"> Include till sales</span></label>
+          <button class="btn primary" id="new-btn">New sales order</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order</th><th>Customer</th><th>Pickup location</th><th>Status</th><th>Ordered</th>
+          <th>Requested</th><th class="num">Units</th><th class="num">Still open</th><th class="num">Total</th>
+        </tr></thead>
+        <tbody id="so-body"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Order Placed → Fulfilled → Closed, or Cancelled. Stock leaves the ledger when an order is fulfilled, not when it is placed.</p>
+    </div>
+
+    <!-- ============ new order ============ -->
+    <div class="panel" id="new-panel" hidden>
+      <div class="panel-head">
+        <h2>New sales order</h2>
+        <button class="btn small" id="new-close">Close</button>
+      </div>
+      <div class="inline-form" style="margin-bottom:14px">
+        <label>Customer <select id="n-customer"></select></label>
+        <label>Pickup location <select id="n-location"></select></label>
+        <label>Requested date <input type="date" id="n-date"></label>
+        <label>Discount % <input type="number" id="n-discount" class="qty" min="0" max="100" step="1" value="0"></label>
+      </div>
+      <div class="scan">
+        <input id="n-scan" placeholder="Scan a barcode, or type a SKU or item name and press Enter" aria-label="Scan barcode to add to order" autocomplete="off">
+        <button type="button" class="btn" id="n-cam">Use camera</button>
+      </div>
+      <div class="match-list" id="n-matches"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>SKU</th><th>Item</th><th class="num">In stock at pickup</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Line total</th><th></th></tr></thead>
+        <tbody id="n-body"></tbody>
+        <tfoot><tr><td colspan="5" id="n-total-label">Total</td><td class="num" id="n-total">$0.00</td><td></td></tr></tfoot>
+      </table></div>
+      <label class="stack" style="display:block;margin-top:12px">
+        <span class="muted">Note (optional)</span><br>
+        <input id="n-note" maxlength="200" style="width:100%;max-width:480px">
+      </label>
+      <p class="error-text" id="n-error" role="alert"></p>
+      <div class="form-actions"><button class="btn primary" id="n-place">Place order</button></div>
+    </div>
+
+    <!-- ============ order detail ============ -->
+    <div class="panel" id="detail-panel" hidden>
+      <div class="panel-head">
+        <h2 id="d-title"></h2>
+        <button class="btn small" id="d-close">Close</button>
+      </div>
+      <div class="facts" id="d-facts"></div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>SKU</th><th>Item</th><th class="num">Price</th><th class="num">Ordered</th><th class="num">Fulfilled</th>
+          <th class="num">Still open</th><th class="num">In stock here</th><th>Availability</th><th class="num">Amount</th>
+        </tr></thead>
+        <tbody id="d-body"></tbody>
+        <tfoot id="d-foot"></tfoot>
+      </table></div>
+      <p class="error-text" id="d-error" role="alert"></p>
+      <div class="form-actions" id="d-actions" style="justify-content:flex-start"></div>
+    </div>
+
+    <!-- ============ backorders ============ -->
+    <div class="panel">
+      <h2>Backorders</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order</th><th>Customer</th><th>Item</th><th>Location</th><th class="num">Waiting for</th>
+          <th class="num">In stock there</th><th>What it needs</th><th>Estimated available</th>
+        </tr></thead>
+        <tbody id="bo-body"></tbody>
+      </table></div>
+      <p class="muted">A backorder is an open order line that cannot be filled from stock at its pickup location. The estimated date comes from an open purchase order's expected date, or today plus the supplier's lead time.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Sales Orders');
+      if (!me) return;
+      const { sb, esc, money, qty, date, dateOf, today, soNumber, toast, scanBox, findByCode, cameraScan } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      const STATUS = { placed: 'Order Placed', fulfilled: 'Fulfilled', closed: 'Closed', cancelled: 'Cancelled' };
+      const STATUS_CLASS = { placed: 'sent', fulfilled: 'received', closed: 'closed', cancelled: 'cancelled' };
+      const NEEDS = {
+        ready: 'In stock',
+        transfer: 'Transfer from another location',
+        on_order: 'On order from the supplier',
+        reorder: 'Needs a purchase order',
+        build: 'Needs a production order',
+      };
+
+      let orders = [];       // rows from sales_order_totals
+      let openLines = [];    // rows from open_order_lines (everything still waiting)
+      let items = [], customers = [], locations = [];
+      let levels = new Map();  // "itemId:locationId" -> on hand
+      let taxRate = 0;
+      let selectedId = null;
+      let detailLines = [];
+      let cart = [];           // new order: [{ item, qty }]
+
+      const itemById = () => new Map(items.map((i) => [i.id, i]));
+      const locCode = (id) => (locations.find((l) => l.id === id) || {}).code || '';
+      const onHand = (itemId, locationId) => Number(levels.get(itemId + ':' + locationId) || 0);
+      const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [itemRes, custRes, locRes, taxRes] = await Promise.all([
+          sb.from('items').select('id, sku, barcode, name, price, item_type')
+            .in('item_type', ['part', 'complete']).eq('is_active', true).order('sku'),
+          sb.from('customers').select('*').order('customer_no'),
+          sb.from('locations').select('*').order('id'),
+          sb.from('settings').select('value').eq('key', 'tax_rate').maybeSingle(),
+        ]);
+        const error = itemRes.error || custRes.error || locRes.error || taxRes.error;
+        if (error) { toast(error.message, true); return false; }
+        items = itemRes.data.filter((i) => i.price !== null);
+        customers = custRes.data.filter((c) => c.customer_type !== 'walk_in');
+        locations = locRes.data;
+        taxRate = Number(taxRes.data ? taxRes.data.value : 0);
+        return true;
+      }
+
+      async function loadOrders() {
+        const [orderRes, openRes, levelRes] = await Promise.all([
+          sb.from('sales_order_totals').select('*').order('order_id', { ascending: false }).limit(300),
+          sb.from('open_order_lines').select('*').order('est_available_date'),
+          sb.from('inventory_levels').select('item_id, location_id, qty_on_hand'),
+        ]);
+        const error = orderRes.error || openRes.error || levelRes.error;
+        if (error) {
+          toast(error.message + ' — has sql/08_sales_orders_returns.sql been run?', true);
+          return;
+        }
+        orders = orderRes.data;
+        openLines = openRes.data;
+        levels = new Map(levelRes.data.map((l) => [l.item_id + ':' + l.location_id, l.qty_on_hand]));
+        renderList();
+        renderBackorders();
+        renderCart();
+        if (selectedId) await loadDetail();
+      }
+
+      // ---------------- list ----------------
+      function renderList() {
+        const status = $('status-filter').value;
+        const showPos = $('show-pos').checked;
+        const openByOrder = new Map();
+        openLines.forEach((l) => openByOrder.set(l.order_id, (openByOrder.get(l.order_id) || 0) + Number(l.qty_open)));
+
+        const rows = orders.filter((o) => (showPos || o.channel !== 'pos') && (!status || o.status === status));
+        $('so-body').innerHTML = rows.map((o) => `
+          <tr class="clickable ${o.order_id === selectedId ? 'selected' : ''}" data-order="${o.order_id}">
+            <td class="nowrap"><strong>${esc(soNumber(o.order_id))}</strong>${o.channel === 'pos' ? ' <span class="tag">till</span>' : ''}</td>
+            <td>${esc(o.customer_name)}</td>
+            <td>${esc(locCode(o.location_id))}</td>
+            <td><span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span></td>
+            <td class="nowrap">${esc(dateOf(o.order_date))}</td>
+            <td class="nowrap">${esc(date(o.requested_date))}</td>
+            <td class="num">${qty(o.units)}</td>
+            <td class="num">${openByOrder.get(o.order_id) ? qty(openByOrder.get(o.order_id)) : '—'}</td>
+            <td class="num">${money(o.total)}</td>
+          </tr>`).join('') || '<tr><td colspan="9" class="muted">No sales orders yet. Click "New sales order".</td></tr>';
+      }
+      $('status-filter').addEventListener('change', renderList);
+      $('show-pos').addEventListener('change', renderList);
+      $('so-body').addEventListener('click', async (event) => {
+        const row = event.target.closest('[data-order]');
+        if (!row) return;
+        selectedId = Number(row.dataset.order);
+        $('new-panel').hidden = true;
+        renderList();
+        await loadDetail();
+        $('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      // ---------------- backorders ----------------
+      function renderBackorders() {
+        const byId = itemById();
+        const rows = openLines.filter((l) => l.availability !== 'ready');
+        $('bo-body').innerHTML = rows.map((l) => {
+          const item = byId.get(l.item_id) || {};
+          return `<tr class="clickable" data-order="${l.order_id}">
+            <td class="nowrap">${esc(soNumber(l.order_id))}</td>
+            <td>${esc(l.customer_name)}</td>
+            <td>${esc(item.sku)} · ${esc(item.name)}</td>
+            <td>${esc(locCode(l.location_id))}</td>
+            <td class="num">${qty(l.qty_open)}</td>
+            <td class="num">${qty(l.on_hand_here)}</td>
+            <td>${esc(NEEDS[l.availability])}</td>
+            <td class="nowrap">${esc(date(l.est_available_date))}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="8" class="muted">No backorders: every open order line can be filled from stock.</td></tr>';
+      }
+      $('bo-body').addEventListener('click', async (event) => {
+        const row = event.target.closest('[data-order]');
+        if (!row) return;
+        selectedId = Number(row.dataset.order);
+        renderList();
+        await loadDetail();
+        $('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      // ---------------- new order ----------------
+      const newLocationId = () => Number($('n-location').value);
+
+      function addItem(item) {
+        const line = cart.find((l) => l.item.id === item.id);
+        if (line) line.qty += 1; else cart.push({ item, qty: 1 });
+        $('n-matches').innerHTML = '';
+        renderCart();
+      }
+
+      function handleCode(code) {
+        const exact = findByCode(items, code);
+        if (exact) { addItem(exact); return; }
+        const term = code.toLowerCase();
+        const found = items.filter((i) => i.name.toLowerCase().includes(term) || i.sku.toLowerCase().includes(term));
+        if (found.length === 1) { addItem(found[0]); return; }
+        if (found.length === 0) { toast('Nothing matches "' + code + '"', true); return; }
+        $('n-matches').innerHTML = found.slice(0, 12).map((i) =>
+          `<button class="btn small" data-pick="${i.id}">${esc(i.name)} · ${money(i.price)}</button>`).join('');
+      }
+
+      function renderCart() {
+        const discount = Math.min(Math.max(Number($('n-discount').value) || 0, 0), 100);
+        let net = 0;
+        $('n-body').innerHTML = cart.map((l, index) => {
+          const stock = onHand(l.item.id, newLocationId());
+          net += round2(l.qty * l.item.price * (1 - discount / 100));
+          return `<tr>
+            <td class="nowrap">${esc(l.item.sku)}</td><td>${esc(l.item.name)}</td>
+            <td class="num ${l.qty > stock ? 'bad-text' : ''}" title="${l.qty > stock ? 'Not enough in stock: the rest will be a backorder' : ''}">${qty(stock)}</td>
+            <td class="num">${money(l.item.price)}</td>
+            <td class="num"><input class="qty" type="number" min="1" step="1" value="${esc(l.qty)}" data-line="${index}" aria-label="Quantity of ${esc(l.item.name)}"></td>
+            <td class="num">${money(l.qty * l.item.price)}</td>
+            <td><button class="btn small" data-remove="${index}">Remove</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted">Scan or search to add items.</td></tr>';
+        const tax = round2(round2(net) * taxRate);
+        $('n-total-label').textContent = 'Total after ' + qty(discount) + '% discount, with ' + (taxRate * 100).toFixed(2) + '% tax';
+        $('n-total').textContent = money(round2(net) + tax);
+      }
+
+      scanBox($('n-scan'), handleCode);
+      $('n-cam').addEventListener('click', () => cameraScan(handleCode));
+      $('n-matches').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-pick]');
+        if (button) { addItem(items.find((i) => i.id === Number(button.dataset.pick))); $('n-scan').focus(); }
+      });
+      $('n-body').addEventListener('change', (event) => {
+        const input = event.target.closest('[data-line]');
+        if (!input) return;
+        cart[Number(input.dataset.line)].qty = Math.max(1, Math.floor(Number(input.value) || 1));
+        renderCart();
+      });
+      $('n-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-remove]');
+        if (button) { cart.splice(Number(button.dataset.remove), 1); renderCart(); }
+      });
+      $('n-discount').addEventListener('input', renderCart);
+      $('n-location').addEventListener('change', renderCart);
+      // Choosing a customer suggests their home store for pickup.
+      $('n-customer').addEventListener('change', () => {
+        const customer = customers.find((c) => c.id === Number($('n-customer').value));
+        if (customer && customer.home_location_id) $('n-location').value = String(customer.home_location_id);
+        renderCart();
+      });
+
+      $('new-btn').addEventListener('click', () => {
+        selectedId = null; $('detail-panel').hidden = true; renderList();
+        $('new-panel').hidden = false; $('n-error').textContent = '';
+        $('n-date').value = today(); $('n-date').min = today();
+        $('n-customer').dispatchEvent(new Event('change'));
+        $('new-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        $('n-scan').focus();
+      });
+      $('new-close').addEventListener('click', () => { $('new-panel').hidden = true; });
+
+      $('n-place').addEventListener('click', async () => {
+        $('n-error').textContent = '';
+        if (!cart.length) { $('n-error').textContent = 'Add at least one item.'; return; }
+        $('n-place').disabled = true;
+        const { data: orderId, error } = await sb.rpc('create_sales_order', {
+          p_customer_id: Number($('n-customer').value),
+          p_location_id: newLocationId(),
+          p_lines: cart.map((l) => ({ item_id: l.item.id, qty: l.qty })),
+          p_requested_date: $('n-date').value || null,
+          p_discount_pct: Math.min(Math.max(Number($('n-discount').value) || 0, 0), 100),
+          p_note: $('n-note').value.trim() || null,
+        });
+        $('n-place').disabled = false;
+        if (error) { $('n-error').textContent = error.message; return; }
+        toast(soNumber(orderId) + ' placed.');
+        cart = []; $('n-note').value = ''; $('n-discount').value = '0';
+        $('new-panel').hidden = true;
+        selectedId = orderId;
+        await loadOrders();
+        $('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      // ---------------- detail ----------------
+      async function loadDetail() {
+        const { data, error } = await sb.from('sales_line_totals').select('*').eq('order_id', selectedId).order('line_id');
+        if (error) { toast(error.message, true); return; }
+        detailLines = data;
+        renderDetail();
+      }
+
+      function renderDetail() {
+        const o = orders.find((x) => x.order_id === selectedId);
+        if (!o) { $('detail-panel').hidden = true; return; }
+        const byId = itemById();
+        const openById = new Map(openLines.filter((l) => l.order_id === o.order_id).map((l) => [l.line_id, l]));
+
+        $('detail-panel').hidden = false;
+        $('d-error').textContent = '';
+        $('d-title').innerHTML = `${esc(soNumber(o.order_id))} · ${esc(o.customer_name)}
+          <span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span>`;
+
+        const fact = (label, value) => `<div><span>${esc(label)}</span>${value}</div>`;
+        $('d-facts').innerHTML = [
+          fact('Pickup location', esc(locCode(o.location_id))),
+          fact('Ordered', esc(dateOf(o.order_date))),
+          fact('Requested', esc(date(o.requested_date))),
+          fact('Fulfilled', o.fulfilled_at ? esc(dateOf(o.fulfilled_at)) : '—'),
+          fact('Channel', o.channel === 'pos' ? 'Till sale' : o.channel === 'portal' ? 'Customer portal' : 'Sales order'),
+          o.note ? fact('Note', esc(o.note)) : '',
+        ].join('');
+
+        $('d-body').innerHTML = detailLines.map((l) => {
+          const item = byId.get(l.item_id) || {};
+          const open = openById.get(l.line_id);
+          const stillOpen = Number(l.qty) - Number(l.qty_fulfilled);
+          let availability = '—';
+          if (open) {
+            availability = open.availability === 'ready'
+              ? '<span class="ok-text">In stock: ready to fulfil</span>'
+              : `<span class="bad-text">Backorder</span> · ${esc(NEEDS[open.availability])} · est. ${esc(date(open.est_available_date))}`;
+          }
+          return `<tr>
+            <td class="nowrap">${esc(item.sku)}</td><td>${esc(item.name)}</td>
+            <td class="num">${money(l.unit_price)}</td>
+            <td class="num">${qty(l.qty)}</td>
+            <td class="num">${qty(l.qty_fulfilled)}</td>
+            <td class="num">${o.status === 'placed' ? qty(stillOpen) : '—'}</td>
+            <td class="num">${o.status === 'placed' ? qty(onHand(l.item_id, o.location_id)) : '—'}</td>
+            <td>${availability}</td>
+            <td class="num">${money(l.line_gross)}</td>
+          </tr>`;
+        }).join('');
+
+        $('d-foot').innerHTML = `
+          <tr><td colspan="8">Subtotal</td><td class="num">${money(o.gross)}</td></tr>
+          ${Number(o.discount_amount) > 0 ? `<tr><td colspan="8">Discount (${qty(o.discount_pct)}%)</td><td class="num">−${money(o.discount_amount)}</td></tr>` : ''}
+          <tr><td colspan="8">Sales tax (${(Number(o.tax_rate) * 100).toFixed(2)}%)</td><td class="num">${money(o.tax)}</td></tr>
+          <tr><td colspan="8">Total</td><td class="num">${money(o.total)}</td></tr>
+          <tr><td colspan="8" class="muted" style="font-weight:400">Recognised so far on fulfilled units: revenue ${money(o.revenue)}, cost of goods sold ${money(o.cogs)}</td><td></td></tr>`;
+
+        const anyFulfilled = detailLines.some((l) => Number(l.qty_fulfilled) > 0);
+        let buttons = '';
+        if (o.status === 'placed') {
+          buttons = `<button class="btn primary" data-act="fulfill">Fulfil what is in stock</button>
+            <button class="btn" data-act="cancel">${anyFulfilled ? 'Cancel what is still open' : 'Cancel order'}</button>`;
+        } else if (o.status === 'fulfilled') {
+          buttons = '<button class="btn primary" data-act="close">Close order (collected)</button>';
+        }
+        if (anyFulfilled && o.status !== 'cancelled') {
+          buttons += ` <a class="btn" href="returns.html?order=${o.order_id}">Return or exchange</a>`;
+        }
+        $('d-actions').innerHTML = buttons;
+      }
+
+      $('d-actions').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-act]');
+        if (!button) return;
+        const orderId = selectedId;
+        const act = button.dataset.act;
+        let result, message;
+        if (act === 'cancel' && !window.confirm(button.textContent + ' on ' + soNumber(orderId) + '?')) return;
+        button.disabled = true;
+        if (act === 'fulfill') {
+          result = await sb.rpc('fulfill_sales_order', { p_order_id: orderId });
+          message = result.error ? '' : qty(result.data) + ' unit(s) fulfilled on ' + soNumber(orderId) + '.';
+        } else if (act === 'close') {
+          result = await sb.rpc('close_sales_order', { p_order_id: orderId });
+          message = soNumber(orderId) + ' closed.';
+        } else {
+          result = await sb.rpc('cancel_sales_order', { p_order_id: orderId });
+          message = result.data === 'fulfilled'
+            ? 'Unshipped items cancelled; ' + soNumber(orderId) + ' is now fulfilled.'
+            : soNumber(orderId) + ' cancelled.';
+        }
+        button.disabled = false;
+        if (result.error) { $('d-error').textContent = result.error.message; return; }
+        toast(message);
+        await loadOrders();
+      });
+
+      $('d-close').addEventListener('click', () => { selectedId = null; $('detail-panel').hidden = true; renderList(); });
+
+      // ---------------- start ----------------
+      if (!(await loadMaster())) return;
+      $('n-customer').innerHTML = customers.map((c) =>
+        `<option value="${c.id}">${esc(c.name)}${c.customer_type === 'business' ? ' (business)' : ''}</option>`).join('');
+      $('n-location').innerHTML = locations.map((l) =>
+        `<option value="${l.id}">${esc(l.code)} · ${esc(l.name)}</option>`).join('');
+      await loadOrders();
+
+      // Realtime: orders and stock changed by anyone refresh this screen.
+      let reloadTimer;
+      const queueReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(loadOrders, 400); };
+      sb.channel('sales-orders-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

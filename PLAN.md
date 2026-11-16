@@ -128,38 +128,45 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
 | 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
 | 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
-| 5 | POS: barcode scanning and receipt | **In progress** — pages are pushed and live. Still to confirm: `sql/07` run in Supabase, the test sale, and the phone camera test (see Open issues). |
-| 6 | Sales orders, returns and exchanges | **Next** |
-| 7 | Production orders and metrics | |
+| 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
+| 6 | Sales orders, returns and exchanges | **In progress** — code written and tested against a fake database only. `sql/08` not yet run in Supabase; not committed or pushed. |
+| 7 | Production orders and metrics | **Next** |
 | 8 | History generator (12 months, all through the ledger) | |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | |
 | 10 | Financials and reports | |
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
-Status last updated: 2026-11-16 (end of session 2).
+Status last updated: 2026-11-16 (session 3).
 
 ## Open issues / to-do
 
-### To finish step 5 (Mason, in this order)
+### To finish step 6 (Mason, in this order)
 
-The step 5 pages are already on GitHub and live. What was not confirmed at the end of session 2:
+1. **Supabase → SQL Editor:** run `sql/08_sales_orders_returns.sql`. Expected result: 2 table names (`return_lines`, `returns`).
+2. **GitHub Desktop:** commit (summary `Step 6: sales orders and returns`) and click **Push origin**.
+3. **Live site:** hard-refresh and run the two tests in "Try it" below.
 
-1. **Supabase → SQL Editor:** run `sql/07_sales_pos.sql` if it has not been run. Expected result: 2 table names (`sales_order_lines`, `sales_orders`). Running it twice is safe. Until it is run, the Point of Sale page and the dashboard's "Sales today" card show an error.
-2. **Live site:** hard-refresh, open Point of Sale, and run the test in "Try it" below.
-3. **Phone camera test:** open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and scan any barcode. Printed labels for our SKUs come in step 12; until then any product barcode will show "Nothing matches", which still proves the camera reads.
-4. **GitHub Desktop:** commit (summary `Update notes`) and **Push origin**, to upload the note changes made at the end of session 2.
+Try it, part 1 (sales order with a backorder):
+- Sales Orders → New sales order → customer Provo Board Rentals (pickup switches to PROVO).
+- Add `WBC-2003` (Cruiser Complete) and set quantity 5; add `WBC-1603` (Skate Tool), quantity 2. Place order.
+- Provo only has 3 cruisers, so that line shows **Backorder · Transfer from another location** with tomorrow's date, and the order appears in the Backorders panel.
+- Click **Fulfil what is in stock**: 5 units fulfilled (3 cruisers + 2 tools). The order stays "Order Placed" with 2 still open.
+- Inventory → Transfer 2 × WBC-2003 from OREM to PROVO. Back on the order, the line turns "In stock"; fulfil again and the order becomes Fulfilled. Then **Close order**.
 
-Try it (proves a sale reduces stock and records revenue and COGS):
-- Point of Sale, store PROVO: type `WBC-2001`, Enter; type `helmet`, Enter. Discount 10%.
-- Expected totals: subtotal $185.00, discount −$18.50, tax (7.25%) $12.07, total $178.57.
-- Complete sale → receipt appears. Inventory → Movement history shows two "Sale" rows of −1 at PROVO.
-- Dashboard: "Sales today" shows $166.50 (revenue is after discount, before tax) if this is the day's only sale.
+Try it, part 2 (return and exchange):
+- On that order click **Return or exchange**. Return 1 Skate Tool as "Wrong size" and 1 Cruiser Complete as "Defective (quality failure)".
+- Expected: refund $165.00 + $11.96 tax = $176.96. The tool goes back into stock; the cruiser does not and its cost ($79.25) is written off.
+- For an exchange instead of a refund, scan a replacement item in section 3 before posting: the screen shows what the customer pays or gets back.
+
+### Skipped for now
+
+- **Phone camera test** (step 5). To do it later: open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and point it at any barcode you have to hand (a cereal box, a book, a drink bottle). It should say "Nothing matches", which proves the camera reads. Our own printable labels come in step 12.
 
 ### Not verified yet
 
-- `sql/07` was not confirmed as run. If it errors on first run, paste the error into Claude Code.
-- Camera scanning: the library loads and the pop-up opens, but reading a real barcode through a real camera has not been tested (the build machine's browser blocks cameras). Needs the phone test above.
+- `sql/08` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- Camera scanning with a real camera (see above).
 - Realtime has not been tested with two real browsers on any page.
 - USB barcode scanner: only tested with typed input + Enter, not a physical scanner.
 - Receipt printing has not been tried on a real printer.
@@ -170,12 +177,13 @@ Try it (proves a sale reduces stock and records revenue and COGS):
 - "Send" marks the PO as sent; it does not email the supplier.
 - Supplier scorecard, reorder point, EOQ, Due for Review: step 9 (they read the `po_summary` view built in step 4).
 - POS takes no payment details (cash/card) and has one order-level discount percentage, per the approved plan.
-- POS sales are final at the till; returns and exchanges are step 6.
+- A placed sales order cannot be edited, only cancelled and re-entered. Fulfilment ships whatever is in stock (no choosing quantities per line).
+- Stock is not reserved for a placed order: two orders can both show "In stock" for the same last unit; the first one fulfilled gets it.
+- An exchange's replacement items are rung up as a new till sale at today's prices with no discount.
 - Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history. Test POs made now will be wiped then.
 - Settings are read-only on the dashboard: an editable Settings page is still to be built (needed before step 9).
 - Customers cannot log in yet: portal and its security rules are step 11. Master data is staff-only until then.
 - Printable barcode labels: step 12.
-- Only one staff login exists. Each teammate needs: a user created in Supabase (Authentication → Users → Add user, tick Auto Confirm), then `sql/03_make_me_staff.sql` run with their email.
 
 ### Housekeeping
 

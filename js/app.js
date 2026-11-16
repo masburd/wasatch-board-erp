@@ -19,7 +19,7 @@ const WBC = (() => {
       { href: 'returns.html', label: 'Returns & Exchanges' },
     ]},
     { group: 'Stock', links: [
-      { href: 'inventory.html', label: 'Inventory' },
+      { href: 'inventory.html', label: 'Inventory', built: true },
       { href: 'items.html', label: 'Items & BOMs', built: true },
     ]},
     { group: 'Buy', links: [
@@ -73,6 +73,40 @@ const WBC = (() => {
     el.className = isError ? 'show error' : 'show';
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.className = ''; }, isError ? 6000 : 2500);
+  }
+
+  // --- barcode scanning ----------------------------------------------------
+  // A USB barcode scanner behaves like a keyboard: it types the code into
+  // whichever box has the cursor, then presses Enter. So a "scan box" is a
+  // text input that calls onCode(code) on Enter. Typing a code by hand and
+  // pressing Enter works the same way.
+  function scanBox(input, onCode) {
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const code = input.value.trim();
+      input.value = '';
+      if (code) onCode(code);
+    });
+  }
+
+  // Find the item a scanned code belongs to (barcode first, then SKU).
+  function findByCode(items, code) {
+    const wanted = code.trim().toLowerCase();
+    return items.find((i) => (i.barcode || '').toLowerCase() === wanted)
+        || items.find((i) => (i.sku || '').toLowerCase() === wanted)
+        || null;
+  }
+
+  function qty(value) {
+    if (value === null || value === undefined) return '0';
+    return Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+
+  function dateTime(value) {
+    return new Date(value).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
   }
 
   function showSetupNotice() {
@@ -153,5 +187,8 @@ const WBC = (() => {
     window.location.replace('index.html');
   }
 
-  return { sb, configured, esc, money, percent, toast, initPage, signOut, showSetupNotice };
+  return {
+    sb, configured, esc, money, percent, qty, dateTime, toast,
+    scanBox, findByCode, initPage, signOut, showSetupNotice,
+  };
 })();

@@ -8,7 +8,7 @@
 </head>
 <body>
   <div id="content" hidden>
-    <p class="note">Build steps 1–2 are in place: logins and master data. Sales, stock and purchasing numbers will appear here as those steps are built.</p>
+    <p class="note">Build steps 1–3 are in place: logins, master data and inventory. Sales and purchasing numbers will appear here as those steps are built.</p>
 
     <div class="cards" id="cards"></div>
 
@@ -57,7 +57,13 @@
         sb.from('settings').select('*').order('label'),
       ]);
 
+      // Stock totals are added up from the inventory_value view (quantity x average cost).
+      const stock = await sb.from('inventory_value').select('qty_on_hand, value');
+      const units = stock.error ? '!' : WBC.qty(stock.data.reduce((sum, r) => sum + Number(r.qty_on_hand), 0));
+      const value = stock.error ? '!' : WBC.money(stock.data.reduce((sum, r) => sum + Number(r.value), 0));
+
       const cards = [
+        [units, 'Units on hand'], [value, 'Inventory value'],
         [parts, 'Parts'], [completes, 'Complete boards'], [bomLines, 'BOM lines'],
         [suppliers, 'Suppliers'], [customers, 'Customers'],
       ];

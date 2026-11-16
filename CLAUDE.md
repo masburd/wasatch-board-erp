@@ -5,6 +5,44 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - [SPEC.md](SPEC.md) — all 12 required capabilities, seed data, formulas. The source of truth for requirements.
 - [PLAN.md](PLAN.md) — approved table design, transaction flows, screens, build order and status. Update the status table as steps finish.
 
+## Where things stand (updated 2026-11-13, end of session 1)
+
+- **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
+- **Supabase project URL** and publishable key are in `js/config.js`.
+- **Steps 1–2 done and live:** login, navigation, dashboard, Items & BOMs, About.
+- **Step 3 (inventory) written but not finished:** `inventory.html`, `sql/04`, `sql/05` exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
+- **Next to build:** step 4, purchasing.
+
+### SQL files and whether they have been run in Supabase
+
+| Order | File | Run? |
+| --- | --- | --- |
+| 1 | `sql/01_master_schema.sql` | Yes |
+| 2 | `sql/02_master_seed.sql` | Yes |
+| 3 | `sql/03_make_me_staff.sql` | Yes, for Mason's login (run again per teammate, with their email, in the SQL Editor only) |
+| 4 | `sql/04_inventory.sql` | **Not confirmed** — ask the user |
+| 5 | `sql/05_starter_stock_TEMPORARY.sql` | **Not confirmed** — ask the user |
+
+Keep this table current whenever a SQL file is added or the user confirms a run.
+
+### Decisions made in session 1 (beyond PLAN.md's numbered list)
+
+- `items.standard_cost` = supplier's quoted price (default PO price). `avg_cost` starts equal to it and the browser has no permission to write `avg_cost`.
+- `wbc_post_movement()` is the only code that inserts into the ledger and re-averages cost. All later transaction functions must call it. It is not callable from the browser.
+- Stock can never go negative: the trigger on `inventory_movements` refuses the transaction. Sales with no stock become backorders instead.
+- Ledger rows cannot be updated or deleted (trigger). Corrections are new rows.
+- Transfers are immediate (no in-transit state).
+- Return reason "Damaged in transit" is set to not restock, like "Defective".
+- Review interval defaults to 30 days per item.
+- Master data is staff-only for now; customer-facing read access is added with the portal (step 11), using views that hide cost.
+- `sql/05` starter stock is temporary; step 8 replaces it.
+
+### How the user works
+
+- Mason is new to Supabase, git and GitHub. He publishes with **GitHub Desktop** (commit, then Push origin); the command line here has no GitHub login, so `git push` fails. Do not ask him to use terminal git.
+- Commits made here use the repo-local noreply email. Do not put real email addresses in any file: the repo is public.
+- Browser pages cannot be tested against the real database from here. Test page logic with a throwaway copy plus a fake `supabase` object in the scratchpad, served with `python3 -m http.server` run from Bash (the preview launcher fails on this machine), and say clearly that SQL is unverified until the user runs it.
+
 ## Stack
 
 - Plain HTML + JavaScript, **no build step, no npm, no framework**. Supabase JS is loaded from a CDN.
@@ -14,8 +52,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 
 ## Layout
 
-- `index.html` — login. Other pages sit beside it at the top level (`dashboard.html`, `items.html`, `about.html`, …).
-- `js/config.js` — Supabase URL and publishable (anon) key. `js/app.js` — client, login guard, navigation, helpers shared by every page.
+- `index.html` — login. Other pages sit beside it at the top level (`dashboard.html`, `items.html`, `inventory.html`, `about.html`, …).
+- `js/config.js` — Supabase URL and publishable (anon) key. `js/app.js` — client, login guard (`WBC.initPage`), navigation (`NAV`; set `built: true` when a page exists), scan-box helpers (`WBC.scanBox`, `WBC.findByCode`), formatting helpers.
 - `css/style.css` — one stylesheet.
 - `sql/NN_name.sql` — numbered, run in order, safe to re-run. Never edit a file the user has already run without telling them what to re-run.
 

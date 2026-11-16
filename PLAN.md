@@ -124,10 +124,10 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 
 | # | Step | Status |
 | --- | --- | --- |
-| 1 | Setup: Supabase project, GitHub Pages, login, shared navigation | Built — needs your Supabase/GitHub setup |
-| 2 | Master data: tables, seed, Items & BOMs page | Built — needs SQL run in Supabase |
-| 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | |
-| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | |
+| 1 | Setup: Supabase project, GitHub Pages, login, shared navigation | **Done** — live at https://masburd.github.io/wasatch-board-erp/, staff sign-in confirmed |
+| 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
+| 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **In progress** — code written and tested against a fake database only. Not yet run in Supabase, committed or pushed (see Open issues). |
+| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Next** |
 | 5 | POS: barcode scanning and receipt | |
 | 6 | Sales orders, returns and exchanges | |
 | 7 | Production orders and metrics | |
@@ -136,3 +136,37 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 10 | Financials and reports | |
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
+
+Status last updated: 2026-11-13 (end of session 1).
+
+## Open issues / to-do
+
+### To finish step 3 (Mason, in this order)
+
+1. **Supabase → SQL Editor:** run `sql/04_inventory.sql`. Expected result: 4 table names (`inventory_levels`, `inventory_movements`, `transfer_lines`, `transfers`).
+2. **Supabase → SQL Editor:** run `sql/05_starter_stock_TEMPORARY.sql`. Expected result: OREM 1230 units / $20,820.00; PROVO 175 / $3,727.50; SLC 175 / $3,727.50.
+3. **GitHub Desktop:** commit (summary `Step 3: inventory`) and click **Push origin**. Until this is done the live site has no Inventory page.
+4. **Live site:** hard-refresh, open Inventory, post a cycle count on `WBC-1001`, check the row in Movement history, and check the green "Ledger check" line.
+5. **Realtime check:** open Inventory in two browser windows, post an adjustment in one, confirm the other updates.
+
+It was not confirmed at the end of session 1 whether items 1–2 had been run. If unsure, running them again is safe.
+
+### Not verified yet
+
+- `sql/04` and `sql/05` have never been run against a real database (no Postgres on the build machine). Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- Realtime has not been tested with two real browsers (Items page or Inventory page).
+- Barcode scanning has only been tested with typed input + Enter, not with a physical USB scanner.
+
+### Known gaps, planned for later steps
+
+- Phone-camera barcode scanning: step 5 (POS).
+- Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history.
+- Settings are read-only on the dashboard: an editable Settings page is still to be built (needed before step 9).
+- Customers cannot log in yet: portal and its security rules are step 11. Master data is staff-only until then.
+- Printable barcode labels: step 12.
+- Only one staff login exists. Each teammate needs: a user created in Supabase (Authentication → Users → Add user, tick Auto Confirm), then `sql/03_make_me_staff.sql` run with their email.
+
+### Housekeeping
+
+- The first GitHub commit ("Initial commit") shows Mason's personal Gmail address publicly. To hide it on future commits, set the noreply address in GitHub Desktop → Settings → Git.
+- If GitHub Desktop ever shows "Publish repository" instead of "Push origin", it is pointing at the wrong folder. Use File → Add Local Repository and pick the `wasatch-board-erp` folder on the Desktop; never "New Repository".

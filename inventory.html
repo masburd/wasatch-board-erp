@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventory · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="onhand" aria-selected="true">On hand</button>
+      <button role="tab" data-tab="adjust" aria-selected="false">Adjust / count</button>
+      <button role="tab" data-tab="transfer" aria-selected="false">Transfer</button>
+      <button role="tab" data-tab="history" aria-selected="false">Movement history</button>
+    </div>
+
+    <!-- ============ On hand ============ -->
+    <section class="panel" id="tab-onhand">
+      <div class="toolbar">
+        <input type="search" id="oh-search" placeholder="Search SKU or name" aria-label="Search items">
+        <select id="oh-type" aria-label="Filter by type">
+          <option value="">All items</option>
+          <option value="part">Parts</option>
+          <option value="complete">Complete boards</option>
+        </select>
+        <span id="ledger-check" class="muted"></span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead id="oh-head"></thead>
+        <tbody id="oh-body"><tr><td class="muted">Loading…</td></tr></tbody>
+        <tfoot id="oh-foot"></tfoot>
+      </table></div>
+      <p class="muted">On-hand quantities are running totals of the movement ledger. Value = quantity × weighted average cost.</p>
+    </section>
+
+    <!-- ============ Adjust / count ============ -->
+    <section class="panel" id="tab-adjust" hidden>
+      <h2>Scan to adjust</h2>
+      <div class="scan">
+        <input id="adj-scan" placeholder="Scan a barcode, or type a SKU and press Enter" aria-label="Scan barcode to adjust" autocomplete="off">
+      </div>
+      <div id="adj-picked" class="picked" hidden></div>
+
+      <form id="adj-form" hidden>
+        <div class="radio-row">
+          <label><input type="radio" name="adj-mode" value="count" checked> Cycle count: I counted this many</label>
+          <label><input type="radio" name="adj-mode" value="change"> Add or remove a quantity</label>
+        </div>
+        <div class="form-grid">
+          <label>Location <select id="adj-location"></select></label>
+          <label><span id="adj-qty-label">Counted quantity</span>
+            <input id="adj-qty" type="number" step="1" required></label>
+          <label>Reason <select id="adj-reason" required></select></label>
+          <label>Note (optional) <input id="adj-note" maxlength="200"></label>
+        </div>
+        <p class="muted" id="adj-preview"></p>
+        <p class="error-text" id="adj-error" role="alert"></p>
+        <div class="form-actions">
+          <button type="button" class="btn" id="adj-clear">Clear</button>
+          <button type="submit" class="btn primary" id="adj-post">Post adjustment</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============ Transfer ============ -->
+    <section class="panel" id="tab-transfer" hidden>
+      <h2>Transfer between locations</h2>
+      <div class="form-grid">
+        <label>From <select id="tr-from"></select></label>
+        <label>To <select id="tr-to"></select></label>
+      </div>
+      <div class="scan" style="margin-top:14px">
+        <input id="tr-scan" placeholder="Scan a barcode to add it, or type a SKU and press Enter" aria-label="Scan barcode to add to transfer" autocomplete="off">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>SKU</th><th>Item</th><th class="num">Available at From</th><th class="num">Qty to move</th><th></th></tr></thead>
+        <tbody id="tr-body"></tbody>
+      </table></div>
+      <label class="stack" style="display:block;margin-top:12px">
+        <span class="muted">Note (optional)</span><br>
+        <input id="tr-note" maxlength="200" style="width:100%;max-width:480px">
+      </label>
+      <p class="error-text" id="tr-error" role="alert"></p>
+      <div class="form-actions">
+        <button type="button" class="btn" id="tr-clear">Clear</button>
+        <button type="button" class="btn primary" id="tr-post">Post transfer</button>
+      </div>
+    </section>
+
+    <!-- ============ History ============ -->
+    <section class="panel" id="tab-history" hidden>
+      <div class="toolbar">
+        <select id="hi-item" aria-label="Filter by item"><option value="">All items</option></select>
+        <select id="hi-location" aria-label="Filter by location"><option value="">All locations</option></select>
+        <span class="muted" id="hi-count"></span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>When</th><th>SKU</th><th>Item</th><th>Location</th><th>Type</th>
+          <th class="num">Qty</th><th class="num">Unit cost</th><th>Reason / note</th><th>By</th>
+        </tr></thead>
+        <tbody id="hi-body"></tbody>
+      </table></div>
+      <p class="muted">The most recent 200 ledger rows. Rows are never edited or deleted; mistakes are fixed with a new correcting row.</p>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Inventory');
+      if (!me) return;
+      const { sb, esc, money, qty, dateTime, toast, scanBox, findByCode } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      let items = [];          // stockable items (parts and completes)
+      let locations = [];
+      let reasons = [];        // adjustment reason codes
+      let people = new Map();  // login id -> name, for the "By" column
+      let levels = new Map();  // "itemId:locationId" -> { qty_on_hand, value }
+      let adjItem = null;      // the item picked on the Adjust tab
+      let transferLines = [];  // [{ item, qty }]
+
+      const onHand = (itemId, locationId) => Number(levels.get(itemId + ':' + locationId)?.qty_on_hand || 0);
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [itemsRes, locRes, reasonRes, peopleRes] = await Promise.all([
+          sb.from('items').select('id, sku, barcode, name, item_type, avg_cost')
+            .in('item_type', ['part', 'complete']).eq('is_active', true).order('sku'),
+          sb.from('locations').select('*').order('id'),
+          sb.from('reason_codes').select('*').eq('kind', 'adjustment').eq('is_active', true).order('label'),
+          sb.from('profiles').select('id, full_name, email'),
+        ]);
+        const error = itemsRes.error || locRes.error || reasonRes.error || peopleRes.error;
+        if (error) { toast(error.message, true); return false; }
+        items = itemsRes.data;
+        locations = locRes.data;
+        reasons = reasonRes.data;
+        people = new Map(peopleRes.data.map((p) => [p.id, p.full_name || p.email]));
+        return true;
+      }
+
+      async function loadLevels() {
+        const [valueRes, checkRes] = await Promise.all([
+          sb.from('inventory_value').select('*'),
+          sb.from('ledger_check').select('matches'),
+        ]);
+        if (valueRes.error) {
+          toast(valueRes.error.message + ' — has sql/04_inventory.sql been run?', true);
+          return;
+        }
+        levels = new Map(valueRes.data.map((r) => [r.item_id + ':' + r.location_id, r]));
+
+        // Proof for the demo: every running total equals the sum of its ledger rows.
+        const check = $('ledger-check');
+        if (!checkRes.error) {
+          const bad = checkRes.data.filter((r) => !r.matches).length;
+          check.className = bad ? 'bad-text' : 'ok-text';
+          check.textContent = bad
+            ? bad + ' balance(s) do not match the ledger'
+            : 'Ledger check: all ' + checkRes.data.length + ' balances equal the sum of their movements';
+        }
+        renderOnHand();
+        renderAdjustPreview();
+        renderTransfer();
+      }
+
+      // ---------------- On hand tab ----------------
+      function renderOnHand() {
+        const term = $('oh-search').value.trim().toLowerCase();
+        const type = $('oh-type').value;
+        const rows = items.filter((i) =>
+          (!type || i.item_type === type) &&
+          (!term || i.sku.toLowerCase().includes(term) || i.name.toLowerCase().includes(term)));
+
+        $('oh-head').innerHTML = `<tr><th>SKU</th><th>Item</th>
+          ${locations.map((l) => `<th class="num" title="${esc(l.name)}">${esc(l.code)}</th>`).join('')}
+          <th class="num">Total</th><th class="num">Avg cost</th><th class="num">Value</th></tr>`;
+
+        let grandQty = 0, grandValue = 0;
+        $('oh-body').innerHTML = rows.map((i) => {
+          let total = 0, value = 0;
+          const cells = locations.map((l) => {
+            const row = levels.get(i.id + ':' + l.id);
+            const n = Number(row?.qty_on_hand || 0);
+            total += n;
+            value += Number(row?.value || 0);
+            return `<td class="num ${n === 0 ? 'zero' : ''}">${qty(n)}</td>`;
+          }).join('');
+          grandQty += total; grandValue += value;
+          return `<tr><td>${esc(i.sku)}</td><td>${esc(i.name)}</td>${cells}
+            <td class="num"><strong>${qty(total)}</strong></td>
+            <td class="num">${money(i.avg_cost)}</td><td class="num">${money(value)}</td></tr>`;
+        }).join('') || `<tr><td colspan="${locations.length + 5}" class="muted">No items found.</td></tr>`;
+
+        $('oh-foot').innerHTML = `<tr><td colspan="${locations.length + 2}">Total shown</td>
+          <td class="num">${qty(grandQty)}</td><td></td><td class="num">${money(grandValue)}</td></tr>`;
+      }
+      $('oh-search').addEventListener('input', renderOnHand);
+      $('oh-type').addEventListener('change', renderOnHand);
+
+      // ---------------- Adjust tab ----------------
+      function pickAdjustItem(code) {
+        const item = findByCode(items, code);
+        if (!item) { toast('No item with barcode or SKU "' + code + '"', true); return; }
+        adjItem = item;
+        $('adj-form').hidden = false;
+        $('adj-qty').value = '';
+        $('adj-error').textContent = '';
+        renderAdjustPreview();
+        $('adj-qty').focus();
+      }
+
+      function adjustMode() {
+        return document.querySelector('input[name="adj-mode"]:checked').value;
+      }
+
+      function renderAdjustPreview() {
+        if (!adjItem) { $('adj-picked').hidden = true; return; }
+        const locationId = Number($('adj-location').value);
+        const current = onHand(adjItem.id, locationId);
+        const loc = locations.find((l) => l.id === locationId);
+        $('adj-picked').hidden = false;
+        $('adj-picked').innerHTML = `<strong>${esc(adjItem.sku)} · ${esc(adjItem.name)}</strong><br>
+          System says ${qty(current)} on hand at ${esc(loc ? loc.code : '')}.`;
+
+        const isCount = adjustMode() === 'count';
+        $('adj-qty-label').textContent = isCount ? 'Counted quantity' : 'Change (+ to add, − to remove)';
+        $('adj-qty').min = isCount ? '0' : '';
+        const entered = $('adj-qty').value;
+        if (entered === '') { $('adj-preview').textContent = ''; return; }
+        const change = isCount ? Number(entered) - current : Number(entered);
+        $('adj-preview').textContent = change === 0
+          ? 'No difference: nothing will be posted.'
+          : 'This posts a ledger row of ' + (change > 0 ? '+' : '') + qty(change) +
+            ', leaving ' + qty(current + change) + ' on hand.';
+      }
+
+      scanBox($('adj-scan'), pickAdjustItem);
+      $('adj-location').addEventListener('change', renderAdjustPreview);
+      $('adj-qty').addEventListener('input', renderAdjustPreview);
+      document.querySelectorAll('input[name="adj-mode"]').forEach((r) => r.addEventListener('change', renderAdjustPreview));
+
+      function clearAdjust() {
+        adjItem = null;
+        $('adj-form').hidden = true;
+        $('adj-form').reset();
+        $('adj-location').value = String(defaultLocationId());
+        renderAdjustPreview();
+        $('adj-scan').focus();
+      }
+      $('adj-clear').addEventListener('click', clearAdjust);
+
+      $('adj-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        $('adj-error').textContent = '';
+        $('adj-post').disabled = true;
+        // One database function does the whole adjustment (see sql/04_inventory.sql).
+        const { data: change, error } = await sb.rpc('post_adjustment', {
+          p_item_id: adjItem.id,
+          p_location_id: Number($('adj-location').value),
+          p_qty: Number($('adj-qty').value),
+          p_is_count: adjustMode() === 'count',
+          p_reason_code: $('adj-reason').value,
+          p_note: $('adj-note').value.trim() || null,
+        });
+        $('adj-post').disabled = false;
+        if (error) { $('adj-error').textContent = error.message; return; }
+        toast(Number(change) === 0 ? 'Count matched: nothing to post.'
+          : 'Adjustment posted: ' + (change > 0 ? '+' : '') + qty(change) + ' ' + adjItem.sku);
+        await loadLevels();
+        clearAdjust();
+      });
+
+      // ---------------- Transfer tab ----------------
+      function addTransferItem(code) {
+        const item = findByCode(items, code);
+        if (!item) { toast('No item with barcode or SKU "' + code + '"', true); return; }
+        const line = transferLines.find((l) => l.item.id === item.id);
+        if (line) line.qty += 1;                 // scanning the same item again adds one more
+        else transferLines.push({ item, qty: 1 });
+        renderTransfer();
+      }
+
+      function renderTransfer() {
+        const fromId = Number($('tr-from').value);
+        $('tr-body').innerHTML = transferLines.map((l, index) => {
+          const available = onHand(l.item.id, fromId);
+          return `<tr>
+            <td>${esc(l.item.sku)}</td><td>${esc(l.item.name)}</td>
+            <td class="num ${l.qty > available ? 'bad-text' : ''}">${qty(available)}</td>
+            <td class="num"><input class="qty" type="number" min="1" step="1" value="${esc(l.qty)}"
+                 data-line="${index}" aria-label="Quantity of ${esc(l.item.name)} to move"></td>
+            <td><button class="btn small" data-remove="${index}">Remove</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="muted">Scan items to add them to the transfer.</td></tr>';
+      }
+
+      scanBox($('tr-scan'), addTransferItem);
+      $('tr-from').addEventListener('change', renderTransfer);
+      $('tr-body').addEventListener('change', (event) => {
+        const input = event.target.closest('[data-line]');
+        if (!input) return;
+        transferLines[Number(input.dataset.line)].qty = Number(input.value);
+        renderTransfer();
+      });
+      $('tr-body').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-remove]');
+        if (!button) return;
+        transferLines.splice(Number(button.dataset.remove), 1);
+        renderTransfer();
+      });
+      $('tr-clear').addEventListener('click', () => {
+        transferLines = []; $('tr-note').value = ''; $('tr-error').textContent = ''; renderTransfer();
+      });
+
+      $('tr-post').addEventListener('click', async () => {
+        $('tr-error').textContent = '';
+        if (!transferLines.length) { $('tr-error').textContent = 'Scan at least one item.'; return; }
+        if (transferLines.some((l) => !(l.qty > 0))) { $('tr-error').textContent = 'Every quantity must be above zero.'; return; }
+        $('tr-post').disabled = true;
+        // One database function moves every line, or none of them.
+        const { data: transferId, error } = await sb.rpc('post_transfer', {
+          p_from_location_id: Number($('tr-from').value),
+          p_to_location_id: Number($('tr-to').value),
+          p_lines: transferLines.map((l) => ({ item_id: l.item.id, qty: l.qty })),
+          p_note: $('tr-note').value.trim() || null,
+        });
+        $('tr-post').disabled = false;
+        if (error) { $('tr-error').textContent = error.message; return; }
+        toast('Transfer TR-' + String(transferId).padStart(5, '0') + ' posted.');
+        transferLines = []; $('tr-note').value = '';
+        await loadLevels();
+        $('tr-scan').focus();
+      });
+
+      // ---------------- History tab ----------------
+      const TYPE_LABELS = {
+        opening: 'Opening balance', adjustment: 'Adjustment', transfer_out: 'Transfer out',
+        transfer_in: 'Transfer in', po_receipt: 'PO receipt', sale: 'Sale', return: 'Return',
+        production_issue: 'Production issue', production_receipt: 'Production receipt',
+      };
+
+      async function loadHistory() {
+        let query = sb.from('inventory_movements').select('*')
+          .order('occurred_at', { ascending: false }).order('id', { ascending: false }).limit(200);
+        if ($('hi-item').value) query = query.eq('item_id', Number($('hi-item').value));
+        if ($('hi-location').value) query = query.eq('location_id', Number($('hi-location').value));
+        const { data, error } = await query;
+        if (error) { toast(error.message, true); return; }
+
+        const itemById = new Map(items.map((i) => [i.id, i]));
+        const locById = new Map(locations.map((l) => [l.id, l]));
+        const reasonLabel = new Map(reasons.map((r) => [r.code, r.label]));
+        $('hi-count').textContent = data.length + ' rows';
+        $('hi-body').innerHTML = data.map((m) => {
+          const item = itemById.get(m.item_id) || {};
+          const why = [reasonLabel.get(m.reason_code) || m.reason_code, m.note].filter(Boolean).join(' · ');
+          return `<tr>
+            <td class="nowrap">${esc(dateTime(m.occurred_at))}</td>
+            <td class="nowrap">${esc(item.sku)}</td><td>${esc(item.name)}</td>
+            <td>${esc(locById.get(m.location_id)?.code)}</td>
+            <td>${esc(TYPE_LABELS[m.movement_type] || m.movement_type)}</td>
+            <td class="num ${m.qty_change > 0 ? 'plus' : 'minus'}">${m.qty_change > 0 ? '+' : ''}${qty(m.qty_change)}</td>
+            <td class="num">${money(m.unit_cost)}</td>
+            <td>${esc(why)}</td>
+            <td>${esc(people.get(m.created_by) || '')}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="9" class="muted">No movements yet.</td></tr>';
+      }
+      $('hi-item').addEventListener('change', loadHistory);
+      $('hi-location').addEventListener('change', loadHistory);
+
+      // ---------------- tabs ----------------
+      let currentTab = 'onhand';
+      function showTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tabs button').forEach((b) =>
+          b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+        ['onhand', 'adjust', 'transfer', 'history'].forEach((t) => { $('tab-' + t).hidden = t !== name; });
+        // Put the cursor in the scan box so a scanner can be used straight away.
+        if (name === 'adjust') $('adj-scan').focus();
+        if (name === 'transfer') $('tr-scan').focus();
+        if (name === 'history') loadHistory();
+      }
+      document.querySelector('.tabs').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-tab]');
+        if (button) showTab(button.dataset.tab);
+      });
+
+      // ---------------- start ----------------
+      function defaultLocationId() {
+        return me.profile.default_location_id
+          || (locations.find((l) => l.type === 'warehouse') || locations[0] || {}).id;
+      }
+
+      if (!(await loadMaster())) return;
+
+      const locationOptions = locations.map((l) => `<option value="${l.id}">${esc(l.code)} · ${esc(l.name)}</option>`).join('');
+      $('adj-location').innerHTML = locationOptions;
+      $('tr-from').innerHTML = locationOptions;
+      $('tr-to').innerHTML = locationOptions;
+      $('hi-location').insertAdjacentHTML('beforeend', locationOptions);
+      $('adj-location').value = String(defaultLocationId());
+      $('tr-from').value = String(defaultLocationId());
+      const firstOther = locations.find((l) => l.id !== defaultLocationId());
+      if (firstOther) $('tr-to').value = String(firstOther.id);
+      $('adj-reason').innerHTML = reasons.map((r) => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
+      $('hi-item').insertAdjacentHTML('beforeend',
+        items.map((i) => `<option value="${i.id}">${esc(i.sku)} · ${esc(i.name)}</option>`).join(''));
+
+      await loadLevels();
+
+      // Realtime: when anyone, anywhere, changes stock, refresh this screen.
+      let reloadTimer;
+      sb.channel('inventory-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, () => {
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(async () => {
+            await loadLevels();
+            if (currentTab === 'history') loadHistory();
+          }, 300);
+        })
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

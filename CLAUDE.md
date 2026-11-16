@@ -5,13 +5,13 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - [SPEC.md](SPEC.md) — all 12 required capabilities, seed data, formulas. The source of truth for requirements.
 - [PLAN.md](PLAN.md) — approved table design, transaction flows, screens, build order and status. Update the status table as steps finish.
 
-## Where things stand (updated 2026-11-13, end of session 1)
+## Where things stand (updated 2026-11-16)
 
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
-- **Steps 1–2 done and live:** login, navigation, dashboard, Items & BOMs, About.
-- **Step 3 (inventory) written but not finished:** `inventory.html`, `sql/04`, `sql/05` exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
-- **Next to build:** step 4, purchasing.
+- **Steps 1–3 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, About.
+- **Step 4 (purchasing) written but not finished:** `suppliers.html`, `purchasing.html`, `sql/06` exist locally, uncommitted and unpushed. The first thing to do is in PLAN.md → "Open issues / to-do".
+- **Next to build:** step 5, POS.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -20,12 +20,13 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 1 | `sql/01_master_schema.sql` | Yes |
 | 2 | `sql/02_master_seed.sql` | Yes |
 | 3 | `sql/03_make_me_staff.sql` | Yes, for Mason's login (run again per teammate, with their email, in the SQL Editor only) |
-| 4 | `sql/04_inventory.sql` | **Not confirmed** — ask the user |
-| 5 | `sql/05_starter_stock_TEMPORARY.sql` | **Not confirmed** — ask the user |
+| 4 | `sql/04_inventory.sql` | Yes |
+| 5 | `sql/05_starter_stock_TEMPORARY.sql` | Yes |
+| 6 | `sql/06_purchasing.sql` | **Not yet** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
-### Decisions made in session 1 (beyond PLAN.md's numbered list)
+### Decisions made while building (beyond PLAN.md's numbered list)
 
 - `items.standard_cost` = supplier's quoted price (default PO price). `avg_cost` starts equal to it and the browser has no permission to write `avg_cost`.
 - `wbc_post_movement()` is the only code that inserts into the ledger and re-averages cost. All later transaction functions must call it. It is not callable from the browser.
@@ -36,6 +37,10 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Review interval defaults to 30 days per item.
 - Master data is staff-only for now; customer-facing read access is added with the portal (step 11), using views that hide cost.
 - `sql/05` starter stock is temporary; step 8 replaces it.
+- PO statuses: draft → sent ("Order Sent") → received → closed, or cancelled. A PO becomes received when every line is complete or the user ticks "close short"; marking it paid closes it. A PO has no location; the location is chosen on each receipt.
+- Business dates use Mountain time via `wbc_today()`. Backdated receipts post their ledger row at noon on that date.
+- `po_summary` and `po_line_status` views carry fill rate, days late, actual lead time, payment due date and amount owed. The step 9 scorecard and MRP (open PO quantity = `qty_open`) should build on them, not recompute.
+- Screens that take dates (sent, received, paid) let the user backdate, so late deliveries can be demonstrated.
 
 ### How the user works
 

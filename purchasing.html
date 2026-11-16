@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Purchasing · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+
+    <!-- ============ PO list ============ -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Purchase orders</h2>
+        <div class="toolbar" style="margin:0">
+          <select id="status-filter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Order Sent</option>
+            <option value="received">Received</option>
+            <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn primary" id="new-btn">New purchase order</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>PO</th><th>Supplier</th><th>Status</th><th>Sent</th><th>Expected</th><th>Received</th>
+          <th>Actual vs. expected</th><th class="num">Ordered</th><th class="num">Fill rate</th>
+          <th class="num">Owed</th><th>Payment due</th>
+        </tr></thead>
+        <tbody id="po-body"><tr><td colspan="11" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Expected date = sent date + the supplier's quoted lead time. Click a PO to open it.</p>
+    </div>
+
+    <!-- ============ New PO ============ -->
+    <div class="panel" id="new-panel" hidden>
+      <div class="panel-head">
+        <h2>New purchase order</h2>
+        <button class="btn small" id="new-close">Close</button>
+      </div>
+      <div class="inline-form">
+        <label>Supplier <select id="new-supplier"></select></label>
+        <label style="flex:1;min-width:220px">Note (optional) <input id="new-note" maxlength="200"></label>
+      </div>
+      <p class="muted" id="new-supplier-info" style="margin:10px 0"></p>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>SKU</th><th>Item</th><th class="num">On hand (all locations)</th>
+          <th class="num">Unit cost ($)</th><th class="num">Qty to order</th><th class="num">Line total</th>
+        </tr></thead>
+        <tbody id="new-body"></tbody>
+        <tfoot><tr><td colspan="5">PO total</td><td class="num" id="new-total">$0.00</td></tr></tfoot>
+      </table></div>
+      <p class="error-text" id="new-error" role="alert"></p>
+      <div class="form-actions">
+        <button class="btn" id="new-draft">Save as draft</button>
+        <button class="btn primary" id="new-send">Save and mark as sent today</button>
+      </div>
+    </div>
+
+    <!-- ============ PO detail ============ -->
+    <div class="panel" id="detail-panel" hidden>
+      <div class="panel-head">
+        <h2 id="d-title"></h2>
+        <button class="btn small" id="d-close">Close</button>
+      </div>
+      <div class="facts" id="d-facts"></div>
+      <div class="table-wrap"><table>
+        <thead id="d-head"></thead>
+        <tbody id="d-body"></tbody>
+        <tfoot id="d-foot"></tfoot>
+      </table></div>
+      <div id="d-receipts"></div>
+      <div id="d-actions"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Purchasing');
+      if (!me) return;
+      const { sb, esc, money, percent, qty, date, today, poNumber, toast, scanBox, findByCode } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      const STATUS = { draft: 'Draft', sent: 'Order Sent', received: 'Received', closed: 'Closed', cancelled: 'Cancelled' };
+
+      let pos = [];            // rows from the po_summary view
+      let suppliers = [];
+      let items = [];          // purchasable parts
+      let locations = [];
+      let onHandTotal = new Map();  // item id -> units across all locations
+      let selectedId = null;   // PO open in the detail panel
+      let detailLines = [];    // rows from po_line_status for that PO
+      let detailReceipts = [];
+      let receiveQty = new Map();   // po_line_id -> quantity typed/scanned for this receipt
+
+      const itemById = () => new Map(items.map((i) => [i.id, i]));
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [supRes, itemRes, locRes] = await Promise.all([
+          sb.from('suppliers').select('*').order('name'),
+          sb.from('items').select('id, sku, barcode, name, supplier_id, standard_cost')
+            .eq('item_type', 'part').eq('is_active', true).order('sku'),
+          sb.from('locations').select('*').order('id'),
+        ]);
+        const error = supRes.error || itemRes.error || locRes.error;
+        if (error) { toast(error.message, true); return false; }
+        suppliers = supRes.data; items = itemRes.data; locations = locRes.data;
+        return true;
+      }
+
+      async function loadPos() {
+        const [poRes, levelRes] = await Promise.all([
+          sb.from('po_summary').select('*').order('po_id', { ascending: false }),
+          sb.from('inventory_levels').select('item_id, qty_on_hand'),
+        ]);
+        if (poRes.error) {
+          toast(poRes.error.message + ' — has sql/06_purchasing.sql been run?', true);
+          return;
+        }
+        pos = poRes.data;
+        onHandTotal = new Map();
+        (levelRes.data || []).forEach((l) =>
+          onHandTotal.set(l.item_id, (onHandTotal.get(l.item_id) || 0) + Number(l.qty_on_hand)));
+        renderList();
+        renderNewLines();
+        if (selectedId) await loadDetail();
+      }
+
+      // ---------------- list ----------------
+      // Turn days_late into words. Negative = arrived early.
+      function timing(po) {
+        if (po.days_late === null || po.days_late === undefined) return '';
+        const n = Number(po.days_late);
+        if (po.status === 'sent') return n > 0 ? `<span class="bad-text">${n} day${n === 1 ? '' : 's'} overdue</span>` : 'On its way';
+        if (n > 0) return `<span class="bad-text">${n} day${n === 1 ? '' : 's'} late</span>`;
+        if (n < 0) return `<span class="ok-text">${-n} day${n === -1 ? '' : 's'} early</span>`;
+        return '<span class="ok-text">On time</span>';
+      }
+
+      function renderList() {
+        const filter = $('status-filter').value;
+        const rows = pos.filter((p) => !filter || p.status === filter);
+        $('po-body').innerHTML = rows.map((p) => `
+          <tr class="clickable ${p.po_id === selectedId ? 'selected' : ''}" data-po="${p.po_id}">
+            <td class="nowrap"><strong>${esc(poNumber(p.po_id))}</strong></td>
+            <td>${esc(p.supplier_name)}</td>
+            <td><span class="status ${esc(p.status)}">${esc(STATUS[p.status])}</span></td>
+            <td class="nowrap">${esc(date(p.sent_date))}</td>
+            <td class="nowrap">${esc(date(p.expected_date))}</td>
+            <td class="nowrap">${esc(date(p.received_date))}</td>
+            <td class="nowrap">${timing(p)}</td>
+            <td class="num">${money(p.ordered_value)}</td>
+            <td class="num">${p.received_date ? percent(p.fill_rate, 0) : '—'}</td>
+            <td class="num">${Number(p.amount_owed) > 0 ? money(p.amount_owed) : '—'}</td>
+            <td class="nowrap">${p.status === 'received' ? esc(date(p.payment_due_date)) : p.status === 'closed' ? 'Paid ' + esc(date(p.paid_at)) : '—'}</td>
+          </tr>`).join('') || '<tr><td colspan="11" class="muted">No purchase orders yet. Click "New purchase order".</td></tr>';
+      }
+      $('status-filter').addEventListener('change', renderList);
+      $('po-body').addEventListener('click', async (event) => {
+        const row = event.target.closest('[data-po]');
+        if (!row) return;
+        selectedId = Number(row.dataset.po);
+        receiveQty = new Map();
+        $('new-panel').hidden = true;
+        renderList();
+        await loadDetail();
+        $('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      // ---------------- new PO ----------------
+      function renderNewLines() {
+        const supplierId = Number($('new-supplier').value);
+        const supplier = suppliers.find((s) => s.id === supplierId);
+        $('new-supplier-info').textContent = supplier
+          ? `Quoted lead time ${supplier.quoted_lead_time_days} days · Net ${supplier.payment_terms_days}. If sent today, expected ${date(addDays(today(), supplier.quoted_lead_time_days))}.`
+          : '';
+        // Keep anything already typed when the list is redrawn.
+        const typed = new Map([...document.querySelectorAll('#new-body tr[data-item]')].map((tr) =>
+          [Number(tr.dataset.item), { qty: tr.querySelector('.n-qty').value, cost: tr.querySelector('.n-cost').value }]));
+        $('new-body').innerHTML = items.filter((i) => i.supplier_id === supplierId).map((i) => {
+          const keep = typed.get(i.id);
+          return `<tr data-item="${i.id}">
+            <td class="nowrap">${esc(i.sku)}</td><td>${esc(i.name)}</td>
+            <td class="num">${qty(onHandTotal.get(i.id) || 0)}</td>
+            <td class="num"><input class="qty n-cost" type="number" min="0" step="0.01" value="${esc(keep ? keep.cost : i.standard_cost ?? '')}" aria-label="Unit cost of ${esc(i.name)}"></td>
+            <td class="num"><input class="qty n-qty" type="number" min="0" step="1" value="${esc(keep ? keep.qty : '')}" aria-label="Quantity of ${esc(i.name)} to order"></td>
+            <td class="num n-line">—</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="6" class="muted">This supplier has no items.</td></tr>';
+        updateNewTotal();
+      }
+
+      function addDays(isoDate, days) {
+        const d = new Date(isoDate + 'T00:00:00');
+        d.setDate(d.getDate() + Number(days));
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      }
+
+      function newLines() {
+        return [...document.querySelectorAll('#new-body tr[data-item]')].map((tr) => ({
+          item_id: Number(tr.dataset.item),
+          qty: Number(tr.querySelector('.n-qty').value || 0),
+          unit_cost: Number(tr.querySelector('.n-cost').value || 0),
+          row: tr,
+        }));
+      }
+
+      function updateNewTotal() {
+        let total = 0;
+        newLines().forEach((l) => {
+          const line = l.qty * l.unit_cost;
+          total += line;
+          l.row.querySelector('.n-line').textContent = l.qty > 0 ? money(line) : '—';
+        });
+        $('new-total').textContent = money(total);
+      }
+
+      $('new-btn').addEventListener('click', () => {
+        selectedId = null; $('detail-panel').hidden = true; renderList();
+        $('new-panel').hidden = false; $('new-error').textContent = '';
+        $('new-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      $('new-close').addEventListener('click', () => { $('new-panel').hidden = true; });
+      $('new-supplier').addEventListener('change', () => { $('new-body').innerHTML = ''; renderNewLines(); });
+      $('new-body').addEventListener('input', updateNewTotal);
+
+      async function savePo(alsoSend) {
+        $('new-error').textContent = '';
+        const lines = newLines().filter((l) => l.qty > 0)
+          .map((l) => ({ item_id: l.item_id, qty: l.qty, unit_cost: l.unit_cost }));
+        if (!lines.length) { $('new-error').textContent = 'Enter a quantity for at least one item.'; return; }
+
+        $('new-draft').disabled = $('new-send').disabled = true;
+        const created = await sb.rpc('create_purchase_order', {
+          p_supplier_id: Number($('new-supplier').value),
+          p_lines: lines,
+          p_note: $('new-note').value.trim() || null,
+        });
+        let error = created.error;
+        if (!error && alsoSend) {
+          error = (await sb.rpc('send_purchase_order', { p_po_id: created.data, p_sent_date: today() })).error;
+        }
+        $('new-draft').disabled = $('new-send').disabled = false;
+        if (created.error) { $('new-error').textContent = created.error.message; return; }
+
+        toast(error ? 'Saved as a draft, but could not be sent: ' + error.message
+                    : poNumber(created.data) + (alsoSend ? ' created and sent.' : ' saved as a draft.'), Boolean(error));
+        $('new-panel').hidden = true;
+        $('new-body').innerHTML = ''; $('new-note').value = '';
+        selectedId = created.data;
+        receiveQty = new Map();
+        await loadPos();
+      }
+      $('new-draft').addEventListener('click', () => savePo(false));
+      $('new-send').addEventListener('click', () => savePo(true));
+
+      // ---------------- detail ----------------
+      async function loadDetail() {
+        const [lineRes, receiptRes] = await Promise.all([
+          sb.from('po_line_status').select('*').eq('po_id', selectedId).order('po_line_id'),
+          sb.from('po_receipts').select('*').eq('po_id', selectedId).order('id'),
+        ]);
+        const error = lineRes.error || receiptRes.error;
+        if (error) { toast(error.message, true); return; }
+        detailLines = lineRes.data;
+        detailReceipts = receiptRes.data;
+        renderDetail();
+      }
+
+      function renderDetail() {
+        const po = pos.find((p) => p.po_id === selectedId);
+        if (!po) { $('detail-panel').hidden = true; return; }
+        const byId = itemById();
+        const receiving = po.status === 'sent';
+
+        $('detail-panel').hidden = false;
+        $('d-title').innerHTML = `${esc(poNumber(po.po_id))} · ${esc(po.supplier_name)}
+          <span class="status ${esc(po.status)}">${esc(STATUS[po.status])}</span>`;
+
+        const fact = (label, value) => `<div><span>${esc(label)}</span>${value}</div>`;
+        $('d-facts').innerHTML = [
+          fact('Sent', esc(date(po.sent_date))),
+          fact('Expected', esc(date(po.expected_date)) + (po.sent_date ? ` <span class="muted">(${esc(po.quoted_lead_time_days)} d quoted)</span>` : '')),
+          fact('Received', esc(date(po.received_date)) + (po.received_date ? ` <span class="muted">(${esc(po.actual_lead_time_days)} d actual)</span>` : '')),
+          fact('Actual vs. expected', timing(po) || '—'),
+          fact('Fill rate', po.received_date ? percent(po.fill_rate, 0) : '—'),
+          fact('Payment due', po.received_date ? esc(date(po.payment_due_date)) + ` <span class="muted">(Net ${esc(po.payment_terms_days)})</span>` : '—'),
+          fact('Paid', esc(date(po.paid_at))),
+          po.note ? fact('Note', esc(po.note)) : '',
+        ].join('');
+
+        $('d-head').innerHTML = `<tr><th>SKU</th><th>Item</th><th class="num">Unit cost</th>
+          <th class="num">Ordered</th><th class="num">Received</th><th class="num">Still open</th>
+          ${receiving ? '<th class="num">Receive now</th>' : ''}<th class="num">Ordered value</th></tr>`;
+        $('d-body').innerHTML = detailLines.map((l) => {
+          const item = byId.get(l.item_id) || {};
+          const open = Number(l.qty_ordered) - Number(l.qty_received);
+          return `<tr>
+            <td class="nowrap">${esc(item.sku)}</td><td>${esc(item.name)}</td>
+            <td class="num">${money(l.unit_cost)}</td>
+            <td class="num">${qty(l.qty_ordered)}</td>
+            <td class="num">${qty(l.qty_received)}</td>
+            <td class="num">${receiving ? qty(open) : '—'}</td>
+            ${receiving ? `<td class="num"><input class="qty" type="number" min="0" max="${open}" step="1"
+                value="${esc(receiveQty.get(l.po_line_id) ?? '')}" placeholder="0" data-rline="${l.po_line_id}"
+                aria-label="Quantity of ${esc(item.name)} received now" ${open <= 0 ? 'disabled' : ''}></td>` : ''}
+            <td class="num">${money(l.ordered_value)}</td>
+          </tr>`;
+        }).join('');
+        $('d-foot').innerHTML = `<tr><td colspan="${receiving ? 7 : 6}">Total ordered
+          ${Number(po.received_value) > 0 ? ' · received value ' + money(po.received_value) : ''}</td>
+          <td class="num">${money(po.ordered_value)}</td></tr>`;
+
+        const locCode = new Map(locations.map((l) => [l.id, l.code]));
+        $('d-receipts').innerHTML = detailReceipts.length
+          ? '<p class="muted" style="margin-top:12px">Receipts: ' + detailReceipts.map((r) =>
+              `${esc(date(r.received_date))} into ${esc(locCode.get(r.location_id))}`).join(' · ') + '</p>'
+          : '';
+
+        renderActions(po);
+      }
+
+      function renderActions(po) {
+        const box = $('d-actions');
+        const nothingReceived = detailLines.every((l) => Number(l.qty_received) === 0);
+        // Only redraw the action box when the PO's situation changes, so a
+        // refresh does not wipe a date or tick box someone has just set.
+        const key = [po.po_id, po.status, nothingReceived].join(':');
+        if (box.dataset.key === key) return;
+        box.dataset.key = key;
+
+        if (po.status === 'draft') {
+          box.innerHTML = `<div class="action-box"><h3>Send to supplier</h3>
+            <div class="inline-form">
+              <label>Sent date <input type="date" id="a-sent" value="${today()}" max="${today()}"></label>
+              <button class="btn primary" id="a-send">Mark as sent</button>
+              <button class="btn" id="a-cancel">Cancel PO</button>
+            </div>
+            <p class="muted" style="margin:10px 0 0">Sending sets the expected receipt date: sent date + ${esc(po.quoted_lead_time_days)} days.</p></div>`;
+        } else if (po.status === 'sent') {
+          const warehouse = locations.find((l) => l.type === 'warehouse') || locations[0];
+          box.innerHTML = `<div class="action-box"><h3>Receive stock</h3>
+            <div class="scan">
+              <input id="a-scan" placeholder="Scan each item as it is unpacked (adds 1), or type quantities above" aria-label="Scan barcode to receive" autocomplete="off">
+              <button class="btn" id="a-fill">Fill all remaining</button>
+            </div>
+            <div class="inline-form">
+              <label>Receive into <select id="a-location">${locations.map((l) =>
+                `<option value="${l.id}" ${l.id === warehouse.id ? 'selected' : ''}>${esc(l.code)} · ${esc(l.name)}</option>`).join('')}</select></label>
+              <label>Received date <input type="date" id="a-received" value="${today()}" min="${esc(po.sent_date)}" max="${today()}"></label>
+              <button class="btn primary" id="a-receive">Post receipt</button>
+              ${nothingReceived ? '<button class="btn" id="a-cancel">Cancel PO</button>' : ''}
+            </div>
+            <label class="check-row"><input type="checkbox" id="a-short">
+              Close this PO short: the supplier will not ship the rest</label>
+            <p class="muted" style="margin:10px 0 0">Posting adds the stock to the ledger at the PO unit cost and re-averages each item's cost. If some is still open, the PO stays "Order Sent" for a later receipt.</p>
+            <p class="error-text" id="a-error" role="alert"></p></div>`;
+          scanBox($('a-scan'), scanReceive);
+        } else if (po.status === 'received') {
+          box.innerHTML = `<div class="action-box"><h3>Pay supplier</h3>
+            <div class="inline-form">
+              <label>Paid date <input type="date" id="a-paid" value="${today()}" min="${esc(po.received_date)}"></label>
+              <button class="btn primary" id="a-pay">Mark paid and close</button>
+            </div>
+            <p class="muted" style="margin:10px 0 0">${money(po.amount_owed)} owed, due ${esc(date(po.payment_due_date))}.</p></div>`;
+        } else {
+          box.innerHTML = '';
+        }
+      }
+
+      // Scanning an item during receiving adds 1 to its "Receive now" box.
+      function scanReceive(code) {
+        const item = findByCode(items, code);
+        const line = item && detailLines.find((l) => l.item_id === item.id);
+        if (!line) { toast('"' + code + '" is not on this purchase order.', true); return; }
+        const open = Number(line.qty_ordered) - Number(line.qty_received);
+        const next = Number(receiveQty.get(line.po_line_id) || 0) + 1;
+        if (next > open) { toast('All ' + qty(open) + ' open units of ' + item.sku + ' are already counted.', true); return; }
+        receiveQty.set(line.po_line_id, next);
+        showReceiveQty();
+      }
+
+      // Copy the scanned / filled quantities into the "Receive now" boxes.
+      function showReceiveQty() {
+        document.querySelectorAll('#d-body [data-rline]').forEach((input) => {
+          input.value = receiveQty.get(Number(input.dataset.rline)) ?? '';
+        });
+      }
+
+      $('d-body').addEventListener('input', (event) => {
+        const input = event.target.closest('[data-rline]');
+        if (input) receiveQty.set(Number(input.dataset.rline), input.value === '' ? '' : Number(input.value));
+      });
+
+      // One listener handles every button in the action box.
+      $('d-actions').addEventListener('click', async (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const poId = selectedId;
+        let result = null, message = '';
+
+        if (button.id === 'a-fill') {
+          detailLines.forEach((l) => {
+            const open = Number(l.qty_ordered) - Number(l.qty_received);
+            if (open > 0) receiveQty.set(l.po_line_id, open);
+          });
+          showReceiveQty();
+          return;
+        }
+        if (button.id === 'a-send') {
+          result = await sb.rpc('send_purchase_order', { p_po_id: poId, p_sent_date: $('a-sent').value || null });
+          message = poNumber(poId) + ' marked as sent.';
+        } else if (button.id === 'a-cancel') {
+          if (!window.confirm('Cancel ' + poNumber(poId) + '?')) return;
+          result = await sb.rpc('cancel_purchase_order', { p_po_id: poId });
+          message = poNumber(poId) + ' cancelled.';
+        } else if (button.id === 'a-receive') {
+          const lines = [...receiveQty].filter(([, n]) => Number(n) > 0)
+            .map(([po_line_id, n]) => ({ po_line_id, qty: Number(n) }));
+          button.disabled = true;
+          result = await sb.rpc('receive_purchase_order', {
+            p_po_id: poId,
+            p_location_id: Number($('a-location').value),
+            p_received_date: $('a-received').value || null,
+            p_lines: lines,
+            p_close_short: $('a-short').checked,
+          });
+          message = 'Receipt posted for ' + poNumber(poId) + '.';
+        } else if (button.id === 'a-pay') {
+          result = await sb.rpc('mark_po_paid', { p_po_id: poId, p_paid_date: $('a-paid').value || null });
+          message = poNumber(poId) + ' paid and closed.';
+        } else {
+          return;
+        }
+
+        if (result.error) {
+          button.disabled = false;
+          const errorEl = $('a-error');
+          if (errorEl) errorEl.textContent = result.error.message; else toast(result.error.message, true);
+          return;
+        }
+        toast(message);
+        receiveQty = new Map();
+        $('d-actions').dataset.key = '';   // force the action box to redraw
+        await loadPos();
+      });
+
+      $('d-close').addEventListener('click', () => { selectedId = null; $('detail-panel').hidden = true; renderList(); });
+
+      // ---------------- start ----------------
+      if (!(await loadMaster())) return;
+      $('new-supplier').innerHTML = suppliers.filter((s) => s.is_active)
+        .map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      await loadPos();
+
+      // Realtime: POs and stock changed by anyone refresh this screen.
+      // (Skipped while a receipt is being typed, so the boxes are not wiped.)
+      let reloadTimer;
+      const queueReload = () => {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          const active = document.activeElement;
+          const typing = active && active.matches('input, select') && active.closest('#d-body, #new-body, #d-actions');
+          if (typing) queueReload(); else loadPos();
+        }, 500);
+      };
+      sb.channel('purchasing-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

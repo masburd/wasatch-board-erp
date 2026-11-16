@@ -126,9 +126,9 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | --- | --- | --- |
 | 1 | Setup: Supabase project, GitHub Pages, login, shared navigation | **Done** — live at https://masburd.github.io/wasatch-board-erp/, staff sign-in confirmed |
 | 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
-| 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **In progress** — code written and tested against a fake database only. Not yet run in Supabase, committed or pushed (see Open issues). |
-| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Next** |
-| 5 | POS: barcode scanning and receipt | |
+| 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
+| 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **In progress** — code written and tested against a fake database only. `sql/06` not yet run in Supabase; not committed or pushed. |
+| 5 | POS: barcode scanning and receipt | **Next** |
 | 6 | Sales orders, returns and exchanges | |
 | 7 | Production orders and metrics | |
 | 8 | History generator (12 months, all through the ledger) | |
@@ -137,30 +137,35 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
-Status last updated: 2026-11-13 (end of session 1).
+Status last updated: 2026-11-16.
 
 ## Open issues / to-do
 
-### To finish step 3 (Mason, in this order)
+### To finish step 4 (Mason, in this order)
 
-1. **Supabase → SQL Editor:** run `sql/04_inventory.sql`. Expected result: 4 table names (`inventory_levels`, `inventory_movements`, `transfer_lines`, `transfers`).
-2. **Supabase → SQL Editor:** run `sql/05_starter_stock_TEMPORARY.sql`. Expected result: OREM 1230 units / $20,820.00; PROVO 175 / $3,727.50; SLC 175 / $3,727.50.
-3. **GitHub Desktop:** commit (summary `Step 3: inventory`) and click **Push origin**. Until this is done the live site has no Inventory page.
-4. **Live site:** hard-refresh, open Inventory, post a cycle count on `WBC-1001`, check the row in Movement history, and check the green "Ledger check" line.
-5. **Realtime check:** open Inventory in two browser windows, post an adjustment in one, confirm the other updates.
+1. **Supabase → SQL Editor:** run `sql/06_purchasing.sql`. Expected result: 4 table names (`po_receipt_lines`, `po_receipts`, `purchase_order_lines`, `purchase_orders`).
+2. **GitHub Desktop:** commit (summary `Step 4: purchasing`) and click **Push origin**.
+3. **Live site:** hard-refresh, open Purchasing, and run the test in "Try it" below.
 
-It was not confirmed at the end of session 1 whether items 1–2 had been run. If unsure, running them again is safe.
+Try it (proves receiving and weighted average cost):
+- New purchase order → Timberline Deck Works → WBC-1002 Street Deck 8.5": change unit cost to 30, quantity 10 → **Save and mark as sent today**.
+- Open the PO → **Fill all remaining** → **Post receipt**.
+- Items & BOMs: WBC-1002 cost should move from $24.00 to about $24.70 (76 on hand at $24 plus 10 at $30), and Pro Complete 8.5" should rise by the same amount.
+- Inventory → Movement history: a "PO receipt" row of +10 at $30.00.
 
 ### Not verified yet
 
-- `sql/04` and `sql/05` have never been run against a real database (no Postgres on the build machine). Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
-- Realtime has not been tested with two real browsers (Items page or Inventory page).
+- `sql/06` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- Realtime has not been tested with two real browsers on any page.
 - Barcode scanning has only been tested with typed input + Enter, not with a physical USB scanner.
 
 ### Known gaps, planned for later steps
 
+- A draft PO cannot be edited, only cancelled and re-created.
+- "Send" marks the PO as sent; it does not email the supplier.
+- Supplier scorecard, reorder point, EOQ, Due for Review: step 9 (they read the `po_summary` view built in step 4).
 - Phone-camera barcode scanning: step 5 (POS).
-- Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history.
+- Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history. Test POs made now will be wiped then.
 - Settings are read-only on the dashboard: an editable Settings page is still to be built (needed before step 9).
 - Customers cannot log in yet: portal and its security rules are step 11. Master data is staff-only until then.
 - Printable barcode labels: step 12.

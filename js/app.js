@@ -23,9 +23,9 @@ const WBC = (() => {
       { href: 'items.html', label: 'Items & BOMs', built: true },
     ]},
     { group: 'Buy', links: [
-      { href: 'purchasing.html', label: 'Purchasing' },
+      { href: 'purchasing.html', label: 'Purchasing', built: true },
       { href: 'review.html', label: 'Due for Review' },
-      { href: 'suppliers.html', label: 'Suppliers' },
+      { href: 'suppliers.html', label: 'Suppliers', built: true },
     ]},
     { group: 'Make', links: [
       { href: 'production.html', label: 'Production' },
@@ -109,6 +109,24 @@ const WBC = (() => {
     });
   }
 
+  // Today's date as YYYY-MM-DD in the computer's own time zone (for date boxes).
+  function today() {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  // Show a stored date (YYYY-MM-DD) as "Nov 16, 2026".
+  function date(value) {
+    if (!value) return '—';
+    return new Date(value + 'T00:00:00').toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+  }
+
+  function poNumber(id) {
+    return 'PO-' + String(id).padStart(5, '0');
+  }
+
   function showSetupNotice() {
     document.body.innerHTML = `
       <main class="center-card">
@@ -188,7 +206,7 @@ const WBC = (() => {
   }
 
   return {
-    sb, configured, esc, money, percent, qty, dateTime, toast,
+    sb, configured, esc, money, percent, qty, dateTime, today, date, poNumber, toast,
     scanBox, findByCode, initPage, signOut, showSetupNotice,
   };
 })();

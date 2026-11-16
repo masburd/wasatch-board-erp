@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suppliers · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Suppliers</h2>
+        <button class="btn primary" id="add-btn">Add supplier</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Supplier</th><th>Contact</th><th>Email</th><th>Phone</th>
+          <th class="num">Quoted lead time</th><th>Terms</th><th class="num">Items</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody id="sup-body"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Quoted lead time sets the expected receipt date on each purchase order. The scorecard that compares these promises with actual deliveries arrives in build step 9.</p>
+    </div>
+  </div>
+
+  <dialog id="sup-dialog">
+    <h2 id="sup-title">Add supplier</h2>
+    <form id="sup-form">
+      <div class="form-grid">
+        <label class="wide">Supplier name <input id="s-name" required maxlength="120"></label>
+        <label>Contact name <input id="s-contact" maxlength="120"></label>
+        <label>Phone <input id="s-phone" maxlength="40"></label>
+        <label class="wide">Email <input id="s-email" type="email" maxlength="160"></label>
+        <label>Quoted lead time (days) <input id="s-lead" type="number" min="0" step="1" required></label>
+        <label>Payment terms (Net days) <input id="s-terms" type="number" min="0" step="1" required></label>
+      </div>
+      <p class="error-text" id="sup-error" role="alert"></p>
+      <div class="form-actions">
+        <button type="button" class="btn" id="sup-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="sup-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Suppliers');
+      if (!me) return;
+      const { sb, esc, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      let suppliers = [];
+      let itemCounts = new Map();  // supplier id -> number of items they supply
+      let editingId = null;        // null while adding a new supplier
+
+      async function load() {
+        const [supRes, itemRes] = await Promise.all([
+          sb.from('suppliers').select('*').order('name'),
+          sb.from('items').select('supplier_id').eq('item_type', 'part'),
+        ]);
+        const error = supRes.error || itemRes.error;
+        if (error) { toast(error.message, true); return; }
+        suppliers = supRes.data;
+        itemCounts = new Map();
+        itemRes.data.forEach((i) => itemCounts.set(i.supplier_id, (itemCounts.get(i.supplier_id) || 0) + 1));
+        render();
+      }
+
+      function render() {
+        $('sup-body').innerHTML = suppliers.map((s) => `
+          <tr class="${s.is_active ? '' : 'inactive'}">
+            <td><strong>${esc(s.name)}</strong></td>
+            <td>${esc(s.contact_name)}</td>
+            <td>${esc(s.email)}</td>
+            <td class="nowrap">${esc(s.phone)}</td>
+            <td class="num">${esc(s.quoted_lead_time_days)} days</td>
+            <td class="nowrap">Net ${esc(s.payment_terms_days)}</td>
+            <td class="num">${itemCounts.get(s.id) || 0}</td>
+            <td>${s.is_active ? 'Active' : 'Inactive'}</td>
+            <td class="nowrap">
+              <button class="btn small" data-edit="${s.id}">Edit</button>
+              <button class="btn small" data-toggle="${s.id}">${s.is_active ? 'Deactivate' : 'Reactivate'}</button>
+              <button class="btn small" data-delete="${s.id}">Delete</button>
+            </td>
+          </tr>`).join('') || '<tr><td colspan="9" class="muted">No suppliers yet.</td></tr>';
+      }
+
+      // ---- add / edit ----
+      function openDialog(supplier) {
+        editingId = supplier ? supplier.id : null;
+        $('sup-title').textContent = supplier ? 'Edit ' + supplier.name : 'Add supplier';
+        $('s-name').value = supplier?.name ?? '';
+        $('s-contact').value = supplier?.contact_name ?? '';
+        $('s-phone').value = supplier?.phone ?? '';
+        $('s-email').value = supplier?.email ?? '';
+        $('s-lead').value = supplier?.quoted_lead_time_days ?? '';
+        $('s-terms').value = supplier?.payment_terms_days ?? 30;
+        $('sup-error').textContent = '';
+        $('sup-dialog').showModal();
+      }
+
+      $('add-btn').addEventListener('click', () => openDialog(null));
+      $('sup-cancel').addEventListener('click', () => $('sup-dialog').close());
+
+      $('sup-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const row = {
+          name: $('s-name').value.trim(),
+          contact_name: $('s-contact').value.trim() || null,
+          phone: $('s-phone').value.trim() || null,
+          email: $('s-email').value.trim() || null,
+          quoted_lead_time_days: Number($('s-lead').value),
+          payment_terms_days: Number($('s-terms').value),
+        };
+        $('sup-save').disabled = true;
+        const { error } = editingId
+          ? await sb.from('suppliers').update(row).eq('id', editingId)
+          : await sb.from('suppliers').insert(row);
+        $('sup-save').disabled = false;
+        if (error) {
+          $('sup-error').textContent = error.code === '23505'
+            ? 'A supplier with that name already exists.' : error.message;
+          return;
+        }
+        $('sup-dialog').close();
+        toast('Supplier saved.');
+        await load();
+      });
+
+      // ---- row buttons ----
+      $('sup-body').addEventListener('click', async (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const id = Number(button.dataset.edit || button.dataset.toggle || button.dataset.delete);
+        const supplier = suppliers.find((s) => s.id === id);
+        if (!supplier) return;
+
+        if (button.dataset.edit) { openDialog(supplier); return; }
+
+        if (button.dataset.toggle) {
+          const { error } = await sb.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', id);
+          if (error) toast(error.message, true);
+          else toast(supplier.name + (supplier.is_active ? ' deactivated.' : ' reactivated.'));
+          await load();
+          return;
+        }
+
+        if (button.dataset.delete) {
+          if (!window.confirm('Delete ' + supplier.name + '? This cannot be undone.')) return;
+          const { error } = await sb.from('suppliers').delete().eq('id', id);
+          if (error) {
+            // 23503 = other records still point at this supplier.
+            toast(error.code === '23503'
+              ? supplier.name + ' has items or purchase orders, so it cannot be deleted. Deactivate it instead.'
+              : error.message, true);
+          } else {
+            toast(supplier.name + ' deleted.');
+          }
+          await load();
+        }
+      });
+
+      // Realtime: another user's supplier edits appear here.
+      let reloadTimer;
+      sb.channel('suppliers-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(load, 300);
+        })
+        .subscribe();
+
+      await load();
+    })();
+  </script>
+</body>
+</html>

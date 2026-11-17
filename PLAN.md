@@ -129,7 +129,7 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
 | 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
 | 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
-| 6 | Sales orders, returns and exchanges | **In progress** — code written and tested against a fake database only. `sql/08` not yet run in Supabase; not committed or pushed. |
+| 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
 | 7 | Production orders and metrics | **Next** |
 | 8 | History generator (12 months, all through the ledger) | |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | |
@@ -137,15 +137,15 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
-Status last updated: 2026-11-16 (session 3).
+Status last updated: 2026-11-16 (end of session 3).
 
 ## Open issues / to-do
 
-### To finish step 6 (Mason, in this order)
+### Step 6 loose ends
 
-1. **Supabase → SQL Editor:** run `sql/08_sales_orders_returns.sql`. Expected result: 2 table names (`return_lines`, `returns`).
-2. **GitHub Desktop:** commit (summary `Step 6: sales orders and returns`) and click **Push origin**.
-3. **Live site:** hard-refresh and run the two tests in "Try it" below.
+`sql/08` is confirmed in the database (2026-11-16). Mason believes he ran the tests below but was not certain, so they stay here as a quick check before the demo.
+
+- **GitHub Desktop:** commit (summary `Update notes`) and **Push origin** if PLAN.md / CLAUDE.md show as changed.
 
 Try it, part 1 (sales order with a backorder):
 - Sales Orders → New sales order → customer Provo Board Rentals (pickup switches to PROVO).
@@ -165,7 +165,7 @@ Try it, part 2 (return and exchange):
 
 ### Not verified yet
 
-- `sql/08` has never been run against a real database. Expect the possibility of a typo-level error on first run; paste the error into Claude Code.
+- Step 6 test numbers (refund $176.96, write-off $79.25) were not confirmed by the user.
 - Camera scanning with a real camera (see above).
 - Realtime has not been tested with two real browsers on any page.
 - USB barcode scanner: only tested with typed input + Enter, not a physical scanner.

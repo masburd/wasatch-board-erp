@@ -130,16 +130,30 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
 | 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
 | 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
-| 7 | Production orders and metrics | **Next** |
-| 8 | History generator (12 months, all through the ledger) | |
+| 7 | Production orders and metrics | **In progress** — built and committed. Still to do: run `sql/09`, push, and the test (see Open issues). |
+| 8 | History generator (12 months, all through the ledger) | **Next** |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | |
 | 10 | Financials and reports | |
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
-Status last updated: 2026-11-16 (end of session 3).
+Status last updated: 2026-11-16 (session 4).
 
 ## Open issues / to-do
+
+### To finish step 7 (Mason, in this order)
+
+1. **Supabase → SQL Editor:** run `sql/09_production.sql`. Expected result: 3 table names (`production_order_components`, `production_orders`, `production_scrap`).
+2. **GitHub Desktop:** Push origin (commit first if anything shows as changed).
+3. **Live site:** hard-refresh, open **Production**, and run the test below.
+
+Try it (numbers assume no purchase receipts have changed average costs; if they have, the costs differ but the yields do not):
+- New production order → `WBC-2001`, quantity 5. Every part shows "Yes" under Enough?. Click **Save and issue parts now**.
+- Inventory → Movement history shows a "Production issue" row for each part, and each part's OREM stock is down by 5 × its per-board quantity.
+- Back on the order: Add scrap or rework line twice. Line 1: 1 board, Cracked deck, Scrapped. Line 2: 1 board, Grip tape misapplied, Reworked. The summary reads "4 good = 5 started − 1 scrapped. Final yield 80% · first-pass yield 60%."
+- Click **Complete order**. WBC-2001 at OREM goes up by 4 (6 → 10 on starter stock). Parts cost $345.00, cost per board $69.00, into stock $276.00, scrap cost $69.00.
+- Production report tab: 1 job, 5 started, 4 good, final yield 80.0%, first-pass yield 60.0%, scrap rate 20.0%.
+- Try a job that is too big (quantity 500): issuing is refused with "Not enough stock" and nothing moves.
 
 ### Step 6 loose ends
 

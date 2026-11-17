@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Production · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="orders" aria-selected="true">Production orders</button>
+      <button role="tab" data-tab="report" aria-selected="false">Production report</button>
+    </div>
+
+    <!-- =====================================================
+         Tab 1: production orders
+         ===================================================== -->
+    <div id="tab-orders">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Production orders</h2>
+          <div class="toolbar" style="margin:0">
+            <select id="status-filter" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="planned">Planned</option>
+              <option value="in_progress">In progress</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn primary" id="new-btn">New production order</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Order</th><th>Board</th><th>Status</th><th class="num">Started</th><th class="num">Good</th>
+            <th class="num">Scrapped</th><th class="num">Reworked</th><th>Start</th><th>Finish</th>
+            <th class="num">Build time</th><th class="num">Final yield</th><th class="num">Cost per board</th>
+          </tr></thead>
+          <tbody id="order-body"><tr><td colspan="12" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+        <p class="muted">All boards are built at <span id="warehouse-name">the warehouse</span>. Click an order to open it.</p>
+      </div>
+
+      <!-- ============ New order ============ -->
+      <div class="panel" id="new-panel" hidden>
+        <div class="panel-head">
+          <h2>New production order</h2>
+          <button class="btn small" id="new-close">Close</button>
+        </div>
+        <div class="inline-form">
+          <label>Board to build <select id="new-item"></select></label>
+          <label>Quantity <input class="qty" id="new-qty" type="number" min="1" step="1" value="1"></label>
+          <label style="flex:1;min-width:220px">Note (optional) <input id="new-note" maxlength="200"></label>
+        </div>
+        <h3 style="margin:16px 0 8px">Parts this job needs (bill of materials × quantity)</h3>
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>SKU</th><th>Part</th><th class="num">Per board</th><th class="num">Needed</th>
+            <th class="num">On hand at warehouse</th><th>Enough?</th>
+            <th class="num">Average cost</th><th class="num">Cost</th>
+          </tr></thead>
+          <tbody id="new-body"></tbody>
+          <tfoot id="new-foot"></tfoot>
+        </table></div>
+        <p class="error-text" id="new-error" role="alert"></p>
+        <div class="form-actions">
+          <button class="btn" id="new-plan">Save as planned</button>
+          <button class="btn primary" id="new-issue">Save and issue parts now</button>
+        </div>
+      </div>
+
+      <!-- ============ Order detail ============ -->
+      <div class="panel" id="detail-panel" hidden>
+        <div class="panel-head">
+          <h2 id="d-title"></h2>
+          <button class="btn small" id="d-close">Close</button>
+        </div>
+        <div class="facts" id="d-facts"></div>
+        <div class="table-wrap"><table>
+          <thead id="d-head"></thead>
+          <tbody id="d-body"></tbody>
+          <tfoot id="d-foot"></tfoot>
+        </table></div>
+        <div id="d-quality"></div>
+        <div id="d-actions"></div>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         Tab 2: production report
+         ===================================================== -->
+    <div id="tab-report" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Production report</h2>
+          <div class="inline-form">
+            <label>Finished from <input type="date" id="r-from"></label>
+            <label>to <input type="date" id="r-to"></label>
+          </div>
+        </div>
+        <div class="cards" id="r-cards"></div>
+        <p class="muted">Counts jobs finished in the date range. Final yield = good ÷ started.
+          First-pass yield = (good − reworked) ÷ started. Scrap rate = scrapped ÷ started.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Scrap and rework by reason</h2>
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Reason</th><th>What happened</th><th class="num">Boards</th>
+            <th class="num">Rate (of boards started)</th><th class="num">Scrap cost</th>
+          </tr></thead>
+          <tbody id="r-scrap"></tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <h2>Jobs finished in this range</h2>
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Order</th><th>Board</th><th>Finished</th><th class="num">Started</th><th class="num">Good</th>
+            <th class="num">Scrapped</th><th class="num">Reworked</th><th class="num">Final yield</th>
+            <th class="num">First-pass yield</th><th class="num">Build time</th>
+            <th class="num">Into stock</th><th class="num">Scrap cost</th>
+          </tr></thead>
+          <tbody id="r-orders"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Production');
+      if (!me) return;
+      const { sb, esc, money, percent, qty, dateTime, date, today, moNumber, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      const STATUS = { planned: 'Planned', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' };
+
+      let orders = [];          // rows from the production_order_summary view
+      let boards = [];          // complete boards that can be built
+      let itemById = new Map(); // every item, for names and average costs
+      let bom = [];             // all BOM lines
+      let reasons = [];         // scrap reason codes
+      let warehouse = null;
+      let onHand = new Map();   // item id -> units at the warehouse
+      let selectedId = null;    // order open in the detail panel
+      let detailComponents = [];
+      let detailEvents = [];
+      let eventRows = [];       // scrap / rework lines being typed for a completion
+
+      // "2026-11-16T14:30" for a date-and-time box, in the computer's own time zone.
+      function localNow() {
+        const now = new Date();
+        return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      }
+      function toLocalInput(timestamp) {
+        const d = new Date(timestamp);
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      }
+      // Turn what is in a date-and-time box into a moment the database understands.
+      const toTimestamp = (value) => (value ? new Date(value).toISOString() : null);
+
+      function buildTime(hours) {
+        if (hours === null || hours === undefined) return '—';
+        const h = Number(hours);
+        return h < 1 ? Math.round(h * 60) + ' min' : h.toFixed(1) + ' h';
+      }
+
+      // ---------------- loading ----------------
+      async function loadMaster() {
+        const [itemRes, bomRes, locRes, reasonRes] = await Promise.all([
+          sb.from('items').select('id, sku, name, item_type, avg_cost, is_active').order('sku'),
+          sb.from('bom_lines').select('parent_item_id, component_item_id, qty'),
+          sb.from('locations').select('*').order('id'),
+          sb.from('reason_codes').select('*').eq('kind', 'scrap').eq('is_active', true).order('label'),
+        ]);
+        const error = itemRes.error || bomRes.error || locRes.error || reasonRes.error;
+        if (error) { toast(error.message, true); return false; }
+        itemById = new Map(itemRes.data.map((i) => [i.id, i]));
+        boards = itemRes.data.filter((i) => i.item_type === 'complete' && i.is_active);
+        bom = bomRes.data;
+        reasons = reasonRes.data;
+        warehouse = locRes.data.find((l) => l.type === 'warehouse') || locRes.data[0];
+        return true;
+      }
+
+      async function loadOrders() {
+        const [orderRes, levelRes, itemRes] = await Promise.all([
+          sb.from('production_order_summary').select('*').order('order_id', { ascending: false }),
+          sb.from('inventory_levels').select('item_id, qty_on_hand').eq('location_id', warehouse.id),
+          sb.from('items').select('id, sku, name, item_type, avg_cost, is_active'),
+        ]);
+        if (orderRes.error) {
+          toast(orderRes.error.message + ' — has sql/09_production.sql been run?', true);
+          $('order-body').innerHTML = '<tr><td colspan="12" class="muted">Could not load production orders.</td></tr>';
+          return;
+        }
+        orders = orderRes.data;
+        onHand = new Map((levelRes.data || []).map((l) => [l.item_id, Number(l.qty_on_hand)]));
+        if (!itemRes.error) itemById = new Map(itemRes.data.map((i) => [i.id, i]));   // fresh average costs
+        renderList();
+        renderNew();
+        if (selectedId) await loadDetail();
+      }
+
+      // ---------------- list ----------------
+      function renderList() {
+        const filter = $('status-filter').value;
+        const rows = orders.filter((o) => !filter || o.status === filter);
+        $('order-body').innerHTML = rows.map((o) => {
+          const done = o.status === 'completed';
+          const issued = o.status === 'in_progress' || done;
+          return `<tr class="clickable ${o.order_id === selectedId ? 'selected' : ''}" data-order="${o.order_id}">
+            <td class="nowrap"><strong>${esc(moNumber(o.order_id))}</strong></td>
+            <td>${esc(o.sku)} · ${esc(o.item_name)}</td>
+            <td><span class="status ${esc(o.status)}">${esc(STATUS[o.status])}</span></td>
+            <td class="num">${qty(o.qty_started)}</td>
+            <td class="num">${done ? qty(o.qty_good) : '—'}</td>
+            <td class="num">${done ? qty(o.qty_scrapped) : '—'}</td>
+            <td class="num">${done ? qty(o.qty_reworked) : '—'}</td>
+            <td class="nowrap">${o.started_at ? esc(dateTime(o.started_at)) : '—'}</td>
+            <td class="nowrap">${o.finished_at ? esc(dateTime(o.finished_at)) : '—'}</td>
+            <td class="num">${buildTime(o.build_hours)}</td>
+            <td class="num">${done ? percent(o.final_yield, 0) : '—'}</td>
+            <td class="num">${issued ? money(o.unit_cost) : '—'}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="12" class="muted">No production orders yet. Click "New production order".</td></tr>';
+      }
+      $('status-filter').addEventListener('change', renderList);
+      $('order-body').addEventListener('click', async (event) => {
+        const row = event.target.closest('[data-order]');
+        if (!row) return;
+        openOrder(Number(row.dataset.order));
+      });
+
+      async function openOrder(id) {
+        selectedId = id;
+        eventRows = [];
+        $('d-actions').dataset.key = '';
+        $('new-panel').hidden = true;
+        showTab('orders');
+        renderList();
+        await loadDetail();
+        $('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      // ---------------- parts needed (shared by "new" and a planned order) ----------------
+      // BOM lines for a board x the number of boards, compared with warehouse stock.
+      function partsNeeded(boardId, boards) {
+        return bom.filter((b) => b.parent_item_id === boardId).map((b) => {
+          const part = itemById.get(b.component_item_id) || {};
+          const needed = Number(b.qty) * boards;
+          const have = onHand.get(b.component_item_id) || 0;
+          return {
+            sku: part.sku, name: part.name, perBoard: Number(b.qty), needed, have,
+            short: Math.max(0, needed - have),
+            unitCost: Number(part.avg_cost || 0), cost: needed * Number(part.avg_cost || 0),
+          };
+        }).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+      }
+
+      function partsRows(parts) {
+        return parts.map((p) => `<tr>
+          <td class="nowrap">${esc(p.sku)}</td><td>${esc(p.name)}</td>
+          <td class="num">${qty(p.perBoard)}</td>
+          <td class="num">${qty(p.needed)}</td>
+          <td class="num">${qty(p.have)}</td>
+          <td>${p.short > 0 ? `<span class="bad-text">Short by ${qty(p.short)}</span>` : '<span class="ok-text">Yes</span>'}</td>
+          <td class="num">${money(p.unitCost)}</td>
+          <td class="num">${money(p.cost)}</td>
+        </tr>`).join('');
+      }
+
+      function partsFoot(parts, boards) {
+        const total = parts.reduce((sum, p) => sum + p.cost, 0);
+        return `<tr><td colspan="7">Expected cost of the job · ${money(boards > 0 ? total / boards : 0)} per board</td>
+          <td class="num">${money(total)}</td></tr>`;
+      }
+
+      // ---------------- new order ----------------
+      function renderNew() {
+        const boardId = Number($('new-item').value);
+        const n = Math.max(0, Math.floor(Number($('new-qty').value || 0)));
+        const parts = partsNeeded(boardId, n);
+        $('new-body').innerHTML = partsRows(parts)
+          || '<tr><td colspan="8" class="muted">This board has no bill of materials.</td></tr>';
+        $('new-foot').innerHTML = partsFoot(parts, n);
+      }
+      $('new-item').addEventListener('change', renderNew);
+      $('new-qty').addEventListener('input', renderNew);
+      $('new-btn').addEventListener('click', () => {
+        selectedId = null; $('detail-panel').hidden = true; renderList();
+        $('new-panel').hidden = false; $('new-error').textContent = '';
+        renderNew();
+        $('new-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      $('new-close').addEventListener('click', () => { $('new-panel').hidden = true; });
+
+      async function saveOrder(alsoIssue) {
+        $('new-error').textContent = '';
+        const n = Number($('new-qty').value);
+        if (!(n > 0) || n !== Math.floor(n)) { $('new-error').textContent = 'Enter a whole quantity above zero.'; return; }
+
+        $('new-plan').disabled = $('new-issue').disabled = true;
+        const created = await sb.rpc('create_production_order', {
+          p_item_id: Number($('new-item').value), p_qty: n, p_note: $('new-note').value.trim() || null,
+        });
+        let error = created.error;
+        if (!error && alsoIssue) {
+          error = (await sb.rpc('issue_production_order', { p_order_id: created.data, p_started_at: null })).error;
+        }
+        $('new-plan').disabled = $('new-issue').disabled = false;
+        if (created.error) { $('new-error').textContent = created.error.message; return; }
+
+        toast(error ? 'Saved as planned, but parts could not be issued: ' + error.message
+                    : moNumber(created.data) + (alsoIssue ? ' created and parts issued.' : ' saved as planned.'), Boolean(error));
+        $('new-panel').hidden = true;
+        $('new-note').value = ''; $('new-qty').value = 1;
+        selectedId = created.data;
+        eventRows = [];
+        $('d-actions').dataset.key = '';
+        await loadOrders();
+      }
+      $('new-plan').addEventListener('click', () => saveOrder(false));
+      $('new-issue').addEventListener('click', () => saveOrder(true));
+
+      // ---------------- detail ----------------
+      async function loadDetail() {
+        const [compRes, eventRes] = await Promise.all([
+          sb.from('production_order_components').select('*').eq('production_order_id', selectedId).order('item_id'),
+          sb.from('production_scrap').select('*').eq('production_order_id', selectedId).order('id'),
+        ]);
+        const error = compRes.error || eventRes.error;
+        if (error) { toast(error.message, true); return; }
+        detailComponents = compRes.data;
+        detailEvents = eventRes.data;
+        renderDetail();
+      }
+
+      function renderDetail() {
+        const o = orders.find((x) => x.order_id === selectedId);
+        if (!o) { $('detail-panel').hidden = true; return; }
+        const done = o.status === 'completed';
+        const issued = o.status === 'in_progress' || done;
+
+        $('detail-panel').hidden = false;
+        $('d-title').innerHTML = `${esc(moNumber(o.order_id))} · ${esc(o.item_name)}
+          <span class="status ${esc(o.status)}">${esc(STATUS[o.status])}</span>`;
+
+        const fact = (label, value) => `<div><span>${esc(label)}</span>${value}</div>`;
+        $('d-facts').innerHTML = [
+          fact('Boards started', qty(o.qty_started)),
+          fact('Start', o.started_at ? esc(dateTime(o.started_at)) : '—'),
+          fact('Finish', o.finished_at ? esc(dateTime(o.finished_at)) : '—'),
+          fact('Build time', buildTime(o.build_hours)),
+          done ? fact('Good', qty(o.qty_good) + (Number(o.qty_reworked) > 0 ? ` <span class="muted">(${qty(o.qty_reworked)} reworked)</span>` : '')) : '',
+          done ? fact('Scrapped', qty(o.qty_scrapped)) : '',
+          done ? fact('Final yield', percent(o.final_yield, 0)) : '',
+          done ? fact('First-pass yield', percent(o.first_pass_yield, 0)) : '',
+          issued ? fact('Parts cost', money(o.component_cost)) : fact('Expected cost', money(o.planned_cost)),
+          issued ? fact('Cost per board', money(o.unit_cost)) : '',
+          done ? fact('Into stock', money(o.good_value)) : '',
+          done ? fact('Scrap cost', money(o.scrap_cost)) : '',
+          o.note ? fact('Note', esc(o.note)) : '',
+        ].join('');
+
+        if (issued) {
+          // What was actually taken out of stock, at the cost it had then.
+          $('d-head').innerHTML = `<tr><th>SKU</th><th>Part issued</th><th class="num">Qty issued</th>
+            <th class="num">Unit cost</th><th class="num">Cost</th></tr>`;
+          $('d-body').innerHTML = detailComponents.map((c) => {
+            const part = itemById.get(c.item_id) || {};
+            return `<tr><td class="nowrap">${esc(part.sku)}</td><td>${esc(part.name)}</td>
+              <td class="num">${qty(c.qty_issued)}</td><td class="num">${money(c.unit_cost)}</td>
+              <td class="num">${money(Number(c.qty_issued) * Number(c.unit_cost))}</td></tr>`;
+          }).join('');
+          $('d-foot').innerHTML = `<tr><td colspan="4">Parts cost · ${money(o.unit_cost)} per board started</td>
+            <td class="num">${money(o.component_cost)}</td></tr>`;
+        } else {
+          const parts = partsNeeded(o.item_id, Number(o.qty_started));
+          $('d-head').innerHTML = `<tr><th>SKU</th><th>Part</th><th class="num">Per board</th><th class="num">Needed</th>
+            <th class="num">On hand at warehouse</th><th>Enough?</th><th class="num">Average cost</th><th class="num">Cost</th></tr>`;
+          $('d-body').innerHTML = partsRows(parts);
+          $('d-foot').innerHTML = partsFoot(parts, Number(o.qty_started));
+        }
+
+        const reasonLabel = new Map(reasons.map((r) => [r.code, r.label]));
+        $('d-quality').innerHTML = done ? `<p class="muted" style="margin-top:12px">Quality: ${
+          detailEvents.length
+            ? detailEvents.map((e) => `${qty(e.qty)} ${e.disposition === 'scrap' ? 'scrapped' : 'reworked'} (${esc(reasonLabel.get(e.reason_code) || e.reason_code)})`).join(' · ')
+            : 'every board passed first time.'}</p>` : '';
+
+        renderActions(o);
+      }
+
+      function renderActions(o) {
+        const box = $('d-actions');
+        // Only redraw when the order's situation changes, so a background
+        // refresh does not wipe what someone is typing.
+        const key = [o.order_id, o.status].join(':');
+        if (box.dataset.key === key) return;
+        box.dataset.key = key;
+
+        if (o.status === 'planned') {
+          box.innerHTML = `<div class="action-box"><h3>Issue parts and start the job</h3>
+            <div class="inline-form">
+              <label>Start time <input type="datetime-local" id="a-start" value="${localNow()}" max="${localNow()}"></label>
+              <button class="btn primary" id="a-issue">Issue parts</button>
+              <button class="btn" id="a-cancel">Cancel order</button>
+            </div>
+            <p class="muted" style="margin:10px 0 0">Issuing takes every part in the table above out of warehouse stock. If any part is short, nothing is issued.</p>
+            <p class="error-text" id="a-error" role="alert"></p></div>`;
+        } else if (o.status === 'in_progress') {
+          if (!eventRows.length) eventRows = [];
+          box.innerHTML = `<div class="action-box"><h3>Complete the job</h3>
+            <p class="muted" style="margin:0 0 10px">Add a line for each quality problem. Leave it empty if all ${qty(o.qty_started)} boards passed first time.</p>
+            <div class="table-wrap"><table>
+              <thead><tr><th class="num">Boards</th><th>Reason</th><th>What happened</th><th></th></tr></thead>
+              <tbody id="a-events"></tbody>
+            </table></div>
+            <button class="btn small" id="a-add" style="margin-top:8px">Add scrap or rework line</button>
+            <p id="a-summary" style="margin:12px 0"></p>
+            <div class="inline-form">
+              <label>Finish time <input type="datetime-local" id="a-finish" value="${localNow()}"
+                min="${toLocalInput(o.started_at)}" max="${localNow()}"></label>
+              <button class="btn primary" id="a-complete">Complete order</button>
+            </div>
+            <p class="muted" style="margin:10px 0 0">Completing puts the good boards into warehouse stock at the cost of the parts used, and re-averages the board's cost. Parts used on scrapped boards become scrap cost.</p>
+            <p class="error-text" id="a-error" role="alert"></p></div>`;
+          renderEvents();
+        } else {
+          box.innerHTML = '';
+        }
+      }
+
+      // The scrap / rework lines being typed, and the running count of good boards.
+      function renderEvents() {
+        const body = $('a-events');
+        if (!body) return;
+        body.innerHTML = eventRows.map((e, index) => `<tr data-event="${index}">
+          <td class="num"><input class="qty e-qty" type="number" min="1" step="1" value="${esc(e.qty)}" aria-label="Number of boards"></td>
+          <td><select class="e-reason" aria-label="Reason">${reasons.map((r) =>
+            `<option value="${esc(r.code)}" ${r.code === e.reason_code ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></td>
+          <td><select class="e-disposition" aria-label="What happened">
+            <option value="scrap" ${e.disposition === 'scrap' ? 'selected' : ''}>Scrapped (thrown away)</option>
+            <option value="rework" ${e.disposition === 'rework' ? 'selected' : ''}>Reworked (fixed, counts as good)</option>
+          </select></td>
+          <td><button class="btn small e-remove">Remove</button></td>
+        </tr>`).join('') || '<tr><td colspan="4" class="muted">No quality problems recorded.</td></tr>';
+        showSummary();
+      }
+
+      function showSummary() {
+        const o = orders.find((x) => x.order_id === selectedId);
+        const el = $('a-summary');
+        if (!o || !el) return;
+        const sum = (kind) => eventRows.filter((e) => e.disposition === kind)
+          .reduce((total, e) => total + Number(e.qty || 0), 0);
+        const scrapped = sum('scrap'), reworked = sum('rework');
+        const started = Number(o.qty_started), good = started - scrapped;
+        const problem = good < 0 ? 'More boards are scrapped than were started.'
+          : reworked > good ? 'More boards are reworked than are good.' : '';
+        el.innerHTML = problem ? `<span class="bad-text">${esc(problem)}</span>`
+          : `<strong>${qty(good)} good</strong> = ${qty(started)} started − ${qty(scrapped)} scrapped.
+             Final yield ${percent(good / started, 0)} · first-pass yield ${percent((good - reworked) / started, 0)}.`;
+      }
+
+      // Typing in a scrap / rework line updates the list held in memory.
+      $('d-actions').addEventListener('input', (event) => {
+        const row = event.target.closest('[data-event]');
+        if (!row) return;
+        const e = eventRows[Number(row.dataset.event)];
+        e.qty = row.querySelector('.e-qty').value;
+        e.reason_code = row.querySelector('.e-reason').value;
+        e.disposition = row.querySelector('.e-disposition').value;
+        showSummary();
+      });
+
+      // One listener handles every button in the action box.
+      $('d-actions').addEventListener('click', async (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const id = selectedId;
+        let result = null, message = '';
+
+        if (button.id === 'a-add') {
+          eventRows.push({ qty: 1, reason_code: reasons[0] ? reasons[0].code : '', disposition: 'scrap' });
+          renderEvents();
+          return;
+        }
+        if (button.classList.contains('e-remove')) {
+          eventRows.splice(Number(button.closest('[data-event]').dataset.event), 1);
+          renderEvents();
+          return;
+        }
+        if (button.id === 'a-issue') {
+          button.disabled = true;
+          result = await sb.rpc('issue_production_order', { p_order_id: id, p_started_at: toTimestamp($('a-start').value) });
+          message = 'Parts issued for ' + moNumber(id) + '.';
+        } else if (button.id === 'a-cancel') {
+          if (!window.confirm('Cancel ' + moNumber(id) + '?')) return;
+          result = await sb.rpc('cancel_production_order', { p_order_id: id });
+          message = moNumber(id) + ' cancelled.';
+        } else if (button.id === 'a-complete') {
+          const events = eventRows.filter((e) => Number(e.qty) > 0)
+            .map((e) => ({ reason_code: e.reason_code, qty: Number(e.qty), disposition: e.disposition }));
+          button.disabled = true;
+          result = await sb.rpc('complete_production_order', {
+            p_order_id: id, p_events: events, p_finished_at: toTimestamp($('a-finish').value),
+          });
+          message = result.error ? '' : moNumber(id) + ' completed: ' + qty(result.data) + ' good boards into stock.';
+        } else {
+          return;
+        }
+
+        if (result.error) {
+          button.disabled = false;
+          const errorEl = $('a-error');
+          if (errorEl) errorEl.textContent = result.error.message; else toast(result.error.message, true);
+          return;
+        }
+        toast(message);
+        eventRows = [];
+        $('d-actions').dataset.key = '';   // force the action box to redraw
+        await loadOrders();
+      });
+
+      $('d-close').addEventListener('click', () => { selectedId = null; $('detail-panel').hidden = true; renderList(); });
+
+      // ---------------- report ----------------
+      async function loadReport() {
+        const from = $('r-from').value, to = $('r-to').value;
+        if (!from || !to) return;
+        const [totalRes, scrapRes, orderRes] = await Promise.all([
+          sb.rpc('production_report', { p_from: from, p_to: to }),
+          sb.rpc('production_scrap_report', { p_from: from, p_to: to }),
+          sb.from('production_order_summary').select('*').eq('status', 'completed')
+            .gte('finished_date', from).lte('finished_date', to).order('finished_at', { ascending: false }),
+        ]);
+        const error = totalRes.error || scrapRes.error || orderRes.error;
+        if (error) { toast(error.message, true); return; }
+
+        const t = (totalRes.data && totalRes.data[0]) || {};
+        const none = !Number(t.orders);
+        const cards = [
+          [qty(t.orders), 'Jobs finished'],
+          [qty(t.units_started), 'Boards started'],
+          [qty(t.units_good), 'Good boards'],
+          [none ? '—' : percent(t.final_yield), 'Final yield'],
+          [none ? '—' : percent(t.first_pass_yield), 'First-pass yield'],
+          [none ? '—' : percent(t.scrap_rate), 'Scrap rate'],
+          [none ? '—' : buildTime(t.avg_build_hours), 'Average build time per job'],
+          [none ? '—' : qty(t.minutes_per_board) + ' min', 'Build time per board'],
+          [money(t.good_value || 0), 'Value built into stock'],
+          [money(t.scrap_cost || 0), 'Scrap cost'],
+        ];
+        $('r-cards').innerHTML = cards.map(([n, label]) =>
+          `<div class="card"><div class="num">${esc(n)}</div><div class="lbl">${esc(label)}</div></div>`).join('');
+
+        $('r-scrap').innerHTML = scrapRes.data.map((s) => `<tr>
+          <td>${esc(s.reason)}</td>
+          <td>${s.disposition === 'scrap' ? 'Scrapped' : 'Reworked'}</td>
+          <td class="num">${qty(s.qty)}</td>
+          <td class="num">${percent(s.rate)}</td>
+          <td class="num">${s.disposition === 'scrap' ? money(s.cost) : '—'}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No scrap or rework in this range.</td></tr>';
+
+        $('r-orders').innerHTML = orderRes.data.map((o) => `<tr class="clickable" data-order="${o.order_id}">
+          <td class="nowrap"><strong>${esc(moNumber(o.order_id))}</strong></td>
+          <td>${esc(o.sku)} · ${esc(o.item_name)}</td>
+          <td class="nowrap">${esc(date(o.finished_date))}</td>
+          <td class="num">${qty(o.qty_started)}</td>
+          <td class="num">${qty(o.qty_good)}</td>
+          <td class="num">${qty(o.qty_scrapped)}</td>
+          <td class="num">${qty(o.qty_reworked)}</td>
+          <td class="num">${percent(o.final_yield, 0)}</td>
+          <td class="num">${percent(o.first_pass_yield, 0)}</td>
+          <td class="num">${buildTime(o.build_hours)}</td>
+          <td class="num">${money(o.good_value)}</td>
+          <td class="num">${money(o.scrap_cost)}</td>
+        </tr>`).join('') || '<tr><td colspan="12" class="muted">No jobs finished in this range.</td></tr>';
+      }
+      $('r-from').addEventListener('change', loadReport);
+      $('r-to').addEventListener('change', loadReport);
+      $('r-orders').addEventListener('click', (event) => {
+        const row = event.target.closest('[data-order]');
+        if (row) openOrder(Number(row.dataset.order));
+      });
+
+      // ---------------- tabs ----------------
+      let currentTab = 'orders';
+      function showTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tabs button').forEach((b) =>
+          b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+        ['orders', 'report'].forEach((t) => { $('tab-' + t).hidden = t !== name; });
+        if (name === 'report') loadReport();
+      }
+      document.querySelector('.tabs').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-tab]');
+        if (button) showTab(button.dataset.tab);
+      });
+
+      // ---------------- start ----------------
+      if (!(await loadMaster())) return;
+      $('warehouse-name').textContent = warehouse.name;
+      $('new-item').innerHTML = boards.map((b) =>
+        `<option value="${b.id}">${esc(b.sku)} · ${esc(b.name)}</option>`).join('');
+      // The report starts on the last 30 days.
+      const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
+      $('r-from').value = new Date(monthAgo.getTime() - monthAgo.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      $('r-to').value = today();
+      await loadOrders();
+
+      // Realtime: production orders and stock changed by anyone refresh this screen.
+      // (Skipped while someone is typing, so the boxes are not wiped.)
+      let reloadTimer;
+      const queueReload = () => {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          const active = document.activeElement;
+          const typing = active && active.matches('input, select') && active.closest('#new-panel, #d-actions');
+          if (typing) { queueReload(); return; }
+          loadOrders();
+          if (currentTab === 'report') loadReport();
+        }, 500);
+      };
+      sb.channel('production-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'production_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

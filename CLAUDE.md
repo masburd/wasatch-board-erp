@@ -5,7 +5,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - [SPEC.md](SPEC.md) — all 12 required capabilities, seed data, formulas. The source of truth for requirements.
 - [PLAN.md](PLAN.md) — approved table design, transaction flows, screens, build order and status. Update the status table as steps finish.
 
-## Where things stand (updated 2026-11-16, end of session 3)
+## Where things stand (updated 2026-11-16, session 4)
 
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
@@ -14,7 +14,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 6 (sales orders, returns, exchanges) pushed and live.** `sql/08` is in the database (checked from the live site on 2026-11-16: `returns`, `return_lines` and `open_order_lines` all answer). Mason thinks he ran the two tests but was not sure; the expected numbers are in PLAN.md → "Open issues / to-do" if anything looks off.
 - All code through step 6 is committed and pushed (last code commit "Step 6: sales orders and returns"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
-- **Next to build:** step 7, production orders and metrics.
+- **Step 7 (production orders and metrics) built and committed, not yet live or confirmed:** `sql/09_production.sql` and `production.html`. The user still has to run `sql/09`, push with GitHub Desktop and run the Try-it test in PLAN.md → "Open issues / to-do". The page was tested locally with the fake database only.
+- **Next to build:** step 8, the 12-month history generator.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -28,6 +29,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 6 | `sql/06_purchasing.sql` | Yes |
 | 7 | `sql/07_sales_pos.sql` | Yes |
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
+| 9 | `sql/09_production.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -52,6 +54,11 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Sales orders: `create_sales_order` (placed, no stock movement) → `fulfill_sales_order` (ships min(open, on hand at the order's location); partial leaves the order placed) → `close_sales_order`. `cancel_sales_order` cancels, or trims unshipped lines if partly shipped. Stock is not reserved.
 - Backorders are not a table: view `open_order_lines` lists every waiting line with `availability` (ready / transfer / on_order / reorder / build) and `est_available_date`. A backorder is any row that is not `ready`. MRP (step 9) should take confirmed demand from placed orders via this view or the same tables.
 - Returns: `post_return` handles refund and exchange. Reason codes with `restock = false` put nothing back in stock; views `return_line_totals` / `return_totals` give `refund_net`, `cogs_reversed` and `write_off`. For the P&L: net sales = revenue − refund_net; COGS = cogs − cogs_reversed; write_off goes on the scrap/adjustments line. An exchange's replacement is a new till sale made by calling `post_pos_sale` inside `post_return`.
+- Production orders: `create_production_order` (planned, always at the warehouse) → `issue_production_order` (copies BOM × qty into `production_order_components` at current average cost, posts `production_issue` rows) → `complete_production_order` (takes a list of scrap/rework events; good = started − scrapped is computed, never typed; receives good boards at component cost ÷ boards started with re-averaging). `cancel_production_order` only before issue. Order numbers show as `MO-00001` (`WBC.moNumber`).
+- Scrap cost is not a ledger row: the parts left stock at issue and only good boards come back. `production_order_summary` gives `component_cost`, `unit_cost`, `good_value`, `scrap_cost`, `final_yield`, `first_pass_yield`, `build_hours`, `finished_date` (Mountain). The P&L scrap line should sum `scrap_cost`.
+- Date-range reports are SQL functions, not views: `production_report(p_from, p_to)` (one row of totals) and `production_scrap_report(p_from, p_to)` (by reason). Later reports with a date range should follow this pattern.
+- Open production quantity for MRP = `qty_started` on orders that are `planned` or `in_progress`.
+- `production_orders.sales_order_line_id` and `destination_location_id` exist but are unused until custom builds (step 11). `issue_production_order` uses component rows that already exist instead of the BOM, so a custom build can arrive with its own list.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 

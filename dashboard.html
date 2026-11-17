@@ -8,7 +8,7 @@
 </head>
 <body>
   <div id="content" hidden>
-    <p class="note">Build steps 1–6 are in place: logins, master data, inventory, purchasing, the point of sale, sales orders and returns.</p>
+    <p class="note">Build steps 1–7 are in place: logins, master data, inventory, purchasing, the point of sale, sales orders, returns and production.</p>
 
     <div class="cards" id="cards"></div>
 
@@ -67,6 +67,10 @@
       const onOrder = openPos.error ? '!' : openPos.data.filter((p) => p.status === 'sent').length;
       const owed = openPos.error ? '!' : WBC.money(openPos.data.reduce((sum, p) => sum + Number(p.amount_owed), 0));
 
+      // Production jobs that are planned or under way.
+      const jobs = await sb.from('production_orders').select('status').in('status', ['planned', 'in_progress']);
+      const openJobs = jobs.error ? '!' : jobs.data.length;
+
       // Today's sales: revenue (after discount, before tax) on orders since midnight.
       const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
       const sales = await sb.from('sales_order_totals').select('revenue').gte('order_date', midnight.toISOString());
@@ -77,6 +81,7 @@
         [salesToday, 'Sales today'], [ordersToday, 'Orders today'],
         [units, 'Units on hand'], [value, 'Inventory value'],
         [onOrder, 'POs on their way'], [owed, 'Owed to suppliers'],
+        [openJobs, 'Production jobs open'],
         [parts, 'Parts'], [completes, 'Complete boards'], [bomLines, 'BOM lines'],
         [suppliers, 'Suppliers'], [customers, 'Customers'],
       ];

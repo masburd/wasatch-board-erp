@@ -28,7 +28,7 @@ const WBC = (() => {
       { href: 'suppliers.html', label: 'Suppliers', built: true },
     ]},
     { group: 'Make', links: [
-      { href: 'production.html', label: 'Production' },
+      { href: 'production.html', label: 'Production', built: true },
       { href: 'mrp.html', label: 'MRP' },
     ]},
     { group: 'Analyze', links: [
@@ -203,6 +203,10 @@ const WBC = (() => {
     return 'PO-' + String(id).padStart(5, '0');
   }
 
+  function moNumber(id) {
+    return 'MO-' + String(id).padStart(5, '0');
+  }
+
   function showSetupNotice() {
     document.body.innerHTML = `
       <main class="center-card">
@@ -282,7 +286,7 @@ const WBC = (() => {
   }
 
   return {
-    sb, configured, esc, money, percent, qty, dateTime, today, date, dateOf, poNumber, toast,
+    sb, configured, esc, money, percent, qty, dateTime, today, date, dateOf, poNumber, moNumber, toast,
     scanBox, findByCode, cameraScan, soNumber, initPage, signOut, showSetupNotice,
   };
 })();

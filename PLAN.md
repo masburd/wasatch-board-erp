@@ -134,12 +134,29 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 8 | History generator (12 months, all through the ledger) | **Done** — `sql/10` run and confirmed. |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Done** — `sql/11` run, live, confirmed. |
 | 10 | Financials and reports | **Done** — `sql/12` and `sql/13` (weekly MRP) run, live, confirmed. |
-| 11 | Customer portal and configurator | **Next** |
-| 12 | About page polish, barcode labels, demo rehearsal | |
+| 11 | Customer portal and configurator | **In progress** — built and committed. Still to do: re-run `sql/11` and `sql/13`, run `sql/14`, turn off email confirmation, push, and try it (see Open issues). |
+| 12 | About page polish, barcode labels, demo rehearsal | **Next** |
 
-Status last updated: 2026-11-16 (session 4).
+Status last updated: 2026-11-16 (session 4, through step 11).
 
 ## Open issues / to-do
+
+### To finish step 11 (Mason, in this order)
+
+1. **Supabase → SQL Editor:** run `sql/11_planning.sql` again (it changed). Expected: the 6-row supplier scorecard, as before.
+2. Run `sql/13_mrp_weekly.sql` again (it changed). Expected: the list of planned orders, as before.
+3. Run `sql/14_portal.sql`. Expected: 6 function names starting `portal_`.
+4. **Supabase → Authentication → Sign In / Providers → Email:** turn **Confirm email** off and save. Otherwise a new customer must click a link in a real email before signing in, and Supabase only sends a few emails an hour.
+5. **GitHub Desktop:** Push origin.
+
+Try it (use a private/incognito window so your staff login stays signed in elsewhere):
+- Open the live site, click **Create an account**, sign up with a made-up email and a password. You land on the shop and are asked for a name and usual store.
+- **Shop:** stock shows per store and warehouse. Add 1 Skate Tool and 2 Grip Tape Sheets to the cart. **Cart:** subtotal $35.00, tax $2.54, total $37.54. Place the order.
+- **My orders:** the order shows "Ready for pickup" if the store has the stock.
+- **Build Your Own Board:** choose Street Deck 8.0", Standard Trucks, Street Wheels, ABEC-7 Bearings. The box and 1" hardware are added automatically: parts $181.00 + $10.00 assembly = $191.00. Switch wheels to Soft Cruiser: riser pads and 1.25" hardware replace the 1" hardware. Choose the Longboard Deck: only longboard trucks and wheels are offered. Order one.
+- **As staff:** Sales Orders shows both portal orders. Production shows a planned "Custom Board" order with the chosen parts. Issue it, complete it: the board is received at the pickup store. Then fulfil the sales order. Back in the customer's My orders it shows "Picked up".
+- **MRP → Order now:** before the custom order is issued, its parts appear under "For planned jobs".
+- **Security check:** signed in as the customer, open `dashboard.html`: it says "Staff access needed".
 
 ### Step 6 loose ends
 

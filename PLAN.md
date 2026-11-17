@@ -131,8 +131,8 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
 | 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
 | 7 | Production orders and metrics | **Done** — `sql/09` run, live, test confirmed. |
-| 8 | History generator (12 months, all through the ledger) | **Next** |
-| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | |
+| 8 | History generator (12 months, all through the ledger) | **In progress** — `sql/10_history.sql` written, never run. Still to do: run it in Supabase and check the result (see Open issues). |
+| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Next** |
 | 10 | Financials and reports | |
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
@@ -140,6 +140,15 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 Status last updated: 2026-11-16 (session 4).
 
 ## Open issues / to-do
+
+### To finish step 8 (Mason, in this order)
+
+`sql/10_history.sql` erases every transaction (test sales, POs, returns, production orders, starter stock) and rebuilds a year of history. Items, BOMs, suppliers, customers, settings and logins are not touched.
+
+1. **Supabase → SQL Editor:** run `sql/10_history.sql`. It may take up to a minute. It has never been run, so if it stops with an error, paste the error into Claude Code; nothing is half-done when it fails (it is all-or-nothing).
+2. Expected result: one row. `ledger_mismatches` must be **0**. Roughly: several thousand `sales_orders`, `revenue` in the low hundreds of thousands, a few hundred `purchase_orders`, 100+ `production_orders`.
+3. **Live site checks:** Inventory shows "ledger check" passing; Movement history starts with "Opening balance" rows on 16 Nov 2025; Purchasing shows Timberline POs late and Urethane POs under 100% fill; Production report over the whole year shows yields below 100%; Sales Orders shows two open orders, one of them a backorder.
+4. **GitHub Desktop:** Push origin.
 
 ### Step 6 loose ends
 

@@ -15,7 +15,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - All code through step 6 is committed and pushed (last code commit "Step 6: sales orders and returns"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
 - **Step 7 (production orders and metrics) done and live:** `sql/09` run, test confirmed by the user on 2026-11-16.
-- **Next to build:** step 8, the 12-month history generator.
+- **Step 8 (history generator) written and committed, not yet run:** `sql/10_history.sql` could not be tested here at all (no local Postgres), so expect a possible error on first run; ask the user to paste it. It erases every transaction and rebuilds 16 Nov 2025 → yesterday.
+- **Next to build:** step 9, planning (ROP, EOQ, Due for Review, MRP, supplier scorecard, editable Settings page).
 
 ### SQL files and whether they have been run in Supabase
 
@@ -30,6 +31,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 7 | `sql/07_sales_pos.sql` | Yes |
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
 | 9 | `sql/09_production.sql` | Yes |
+| 10 | `sql/10_history.sql` | **Not confirmed** — ask the user. Erases and rebuilds all transactions each time it is run. |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -43,7 +45,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Return reason "Damaged in transit" is set to not restock, like "Defective".
 - Review interval defaults to 30 days per item.
 - Master data is staff-only for now; customer-facing read access is added with the portal (step 11), using views that hide cost.
-- `sql/05` starter stock is temporary; step 8 replaces it.
+- `sql/05` starter stock is temporary; `sql/10` erases it and posts real opening balances.
 - PO statuses: draft → sent ("Order Sent") → received → closed, or cancelled. A PO becomes received when every line is complete or the user ticks "close short"; marking it paid closes it. A PO has no location; the location is chosen on each receipt.
 - Business dates use Mountain time via `wbc_today()`. Backdated receipts post their ledger row at noon on that date.
 - `po_summary` and `po_line_status` views carry fill rate, days late, actual lead time, payment due date and amount owed. The step 9 scorecard and MRP (open PO quantity = `qty_open`) should build on them, not recompute.
@@ -59,6 +61,9 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Date-range reports are SQL functions, not views: `production_report(p_from, p_to)` (one row of totals) and `production_scrap_report(p_from, p_to)` (by reason). Later reports with a date range should follow this pattern.
 - Open production quantity for MRP = `qty_started` on orders that are `planned` or `in_progress`.
 - `production_orders.sales_order_line_id` and `destination_location_id` exist but are unused until custom builds (step 11). `issue_production_order` uses component rows that already exist instead of the BOM, so a custom build can arrive with its own list.
+- History generator: `wbc_generate_history(seed)` (SQL Editor only) truncates all transaction tables, resets `avg_cost` to `standard_cost`, posts opening balances dated 2025-11-16, then replays each day: PO receipts, returns, monthly count adjustments, production, business sales orders, store restock transfers (Mon/Thu), purchasing, till sales. It inserts document rows directly and calls `wbc_post_movement` for every stock change (it cannot use the browser functions because they need a staff login). It ends with one planned production order and two placed sales orders (one a backorder) so the screens have open work.
+- The generator's demand model (base rates, seasonal factors, events, supplier behaviour) lives only inside `sql/10`. Step 9 must compute usage, ROP, EOQ and the scorecard from the stored transactions, never from that model.
+- PO prices in history drift −3% to +5% around `standard_cost`, so `avg_cost` differs from `standard_cost` after the history is built.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 

@@ -133,31 +133,13 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 7 | Production orders and metrics | **Done** — `sql/09` run, live, test confirmed. |
 | 8 | History generator (12 months, all through the ledger) | **Done** — `sql/10` run and confirmed. |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Done** — `sql/11` run, live, confirmed. |
-| 10 | Financials and reports | **In progress** — built and committed. Still to do: run `sql/12`, push, and try it (see Open issues). |
-| 11 | Customer portal and configurator | **Next** (after the MRP weekly view, see Open issues) |
+| 10 | Financials and reports | **Done** — `sql/12` and `sql/13` (weekly MRP) run, live, confirmed. |
+| 11 | Customer portal and configurator | **Next** |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
 Status last updated: 2026-11-16 (session 4).
 
 ## Open issues / to-do
-
-### To finish step 10 (Mason, in this order)
-
-1. **Supabase → SQL Editor:** run `sql/12_financials_reports.sql`. Expected result: one row, the P&L for the last 365 days. `net_sales` = `revenue` − `refunds`; `gross_profit` = `net_sales` − `cogs`; `profit` = `gross_profit` − `scrap` − `write_offs` − `adjustments`.
-2. **GitHub Desktop:** Push origin.
-3. **Live site:** hard-refresh and try the checks below.
-
-Try it:
-- **Financials:** the P&L matches the SQL result. The monthly table shows a summer peak and a December bump. Change the quick pick to "Last 30 days": every number changes.
-- **Live update:** keep Financials open in one window, ring up a sale at the POS in another. Within a few seconds revenue goes up by the sale's subtotal.
-- **Reports → Sales:** switch "Group by" between Day, Week and Month. Provo and SLC split the revenue; Orem has none.
-- **Reports → Top sellers / Low stock / Inventory by location / Supplier performance:** each tab fills in.
-
-### To finish the weekly MRP (Mason, in this order)
-
-1. **Supabase → SQL Editor:** run `sql/13_mrp_weekly.sql` (after `sql/12`). Expected result: a list of planned orders for the next 4 weeks; `WBC-2004` should appear, because of the 12-longboard sales order.
-2. **GitHub Desktop:** Push origin.
-3. **Live site → MRP:** the first tab is "Weekly plan (next 4 weeks)". Each item has five rows: gross need, scheduled receipts, planned order, order by, projected stock. Switch "Show" to "All items" to see every item. Place a new sales order for a board with a requested date two weeks out: that week's gross need for the board goes up, and so does the same week's need for its parts.
 
 ### Step 6 loose ends
 

@@ -17,8 +17,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 7 (production orders and metrics) done and live:** `sql/09` run, test confirmed by the user on 2026-11-16.
 - **Step 8 (history generator) done:** `sql/10_history.sql` run and confirmed by the user on 2026-11-16. Re-running it erases and rebuilds all transactions.
 - **Step 9 (planning) done and live:** `sql/11` run, confirmed by the user on 2026-11-16.
-- **Step 10 (financials and reports) built and committed, not yet live or confirmed:** `sql/12_financials_reports.sql`, `financials.html`, `reports.html`. The user still has to run `sql/12`, push, and try it (PLAN.md → "Open issues / to-do"). Pages tested locally with the fake database only; the SQL has never been run.
-- **Weekly MRP (SPEC capability 8) built and committed, not yet live or confirmed:** `sql/13_mrp_weekly.sql` and a "Weekly plan" tab on `mrp.html`. The SQL has never been run.
+- **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
+- **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
 - **Next to build:** step 11, customer portal and configurator.
 
 ### SQL files and whether they have been run in Supabase
@@ -36,8 +36,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 9 | `sql/09_production.sql` | Yes |
 | 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
 | 11 | `sql/11_planning.sql` | Yes |
-| 12 | `sql/12_financials_reports.sql` | **Not confirmed** — ask the user |
-| 13 | `sql/13_mrp_weekly.sql` | **Not confirmed** — ask the user |
+| 12 | `sql/12_financials_reports.sql` | Yes |
+| 13 | `sql/13_mrp_weekly.sql` | Yes |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 

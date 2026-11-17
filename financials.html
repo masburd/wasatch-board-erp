@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Financials · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Period</h2>
+        <div class="inline-form">
+          <label>Quick pick <select id="preset">
+            <option value="365">Last 365 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="month">This month</option>
+            <option value="custom">Custom dates</option>
+          </select></label>
+          <label>From <input type="date" id="from"></label>
+          <label>To <input type="date" id="to"></label>
+        </div>
+      </div>
+      <p class="muted" style="margin:0">Everything on this page is recalculated from sales, returns, production and the
+        inventory ledger each time it loads, and reloads by itself when anyone posts a transaction.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Profit and loss</h2>
+      <div class="table-wrap"><table class="statement">
+        <tbody id="pnl-body"><tr><td class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Revenue and cost of goods sold count units actually handed over. Sales tax collected is owed to the
+        state, so it is shown but is not revenue.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Profit and loss by month</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Month</th><th class="num">Revenue</th><th class="num">Refunds</th><th class="num">Net sales</th>
+          <th class="num">COGS</th><th class="num">Gross profit</th><th class="num">Margin</th>
+          <th class="num">Scrap, write-offs, adjustments</th><th class="num">Profit</th><th class="bar-cell">Net sales</th>
+        </tr></thead>
+        <tbody id="month-body"></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>Inventory turnover</h2>
+      <div class="cards" id="turn-cards"></div>
+      <p class="muted">Turnover = cost of goods sold in the period ÷ average inventory value. Average inventory value is the
+        average of every day's closing stock value in the period, taken from the ledger.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Inventory valuation today (weighted average cost)</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Location</th><th class="num">Units</th><th class="num">Parts</th>
+          <th class="num">Complete boards</th><th class="num">Total value</th></tr></thead>
+        <tbody id="loc-body"></tbody>
+        <tfoot id="loc-foot"></tfoot>
+      </table></div>
+      <h3 style="margin:18px 0 8px">By item</h3>
+      <div class="table-wrap"><table>
+        <thead id="item-head"></thead>
+        <tbody id="item-body"></tbody>
+      </table></div>
+      <p class="muted">Value = quantity on hand × the item's average cost. Average cost is re-averaged on every receipt.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Financials');
+      if (!me) return;
+      const { sb, esc, money, percent, qty, today, daysAgo, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      // ---------------- period ----------------
+      function applyPreset() {
+        const preset = $('preset').value;
+        if (preset === 'custom') return;
+        $('to').value = today();
+        $('from').value = preset === 'month' ? today().slice(0, 8) + '01' : daysAgo(Number(preset));
+      }
+      $('preset').addEventListener('change', () => { applyPreset(); loadPeriod(); });
+      ['from', 'to'].forEach((id) => $(id).addEventListener('change', () => { $('preset').value = 'custom'; loadPeriod(); }));
+
+      // ---------------- P&L and turnover (depend on the period) ----------------
+      async function loadPeriod() {
+        const range = { p_from: $('from').value, p_to: $('to').value };
+        if (!range.p_from || !range.p_to) return;
+        const [totalRes, monthRes, turnRes] = await Promise.all([
+          sb.rpc('pnl', { ...range, p_by: 'total' }),
+          sb.rpc('pnl', { ...range, p_by: 'month' }),
+          sb.rpc('inventory_turnover', range),
+        ]);
+        const error = totalRes.error || monthRes.error || turnRes.error;
+        if (error) { toast(error.message + ' — has sql/12_financials_reports.sql been run?', true); return; }
+
+        // The statement. A line is [label, amount, kind]; minus lines show in brackets.
+        const t = (totalRes.data && totalRes.data[0]) || {};
+        const minus = (value) => (Number(value) ? '(' + money(Math.abs(value)) + ')' : money(0));
+        const lines = [
+          ['Revenue (sales after discount)', money(t.revenue || 0), ''],
+          ['Less refunds on returns', minus(t.refunds), 'sub'],
+          ['Net sales', money(t.net_sales || 0), 'total'],
+          ['Cost of goods sold', minus(t.cogs_sold), 'sub'],
+          ['Cost put back by returns', money(t.cogs_returned || 0), 'sub'],
+          ['Gross profit' + (t.gross_margin !== null && t.gross_margin !== undefined ? ' · ' + percent(t.gross_margin) + ' margin' : ''),
+            money(t.gross_profit || 0), 'total'],
+          ['Production scrap', minus(t.scrap), 'sub'],
+          ['Returned goods written off', minus(t.write_offs), 'sub'],
+          ['Stock count adjustments', Number(t.adjustments) < 0 ? money(-t.adjustments) : minus(t.adjustments), 'sub'],
+          ['Profit after inventory losses', money(t.profit || 0), 'total'],
+          ['Sales tax collected (not revenue)', money(t.tax_collected || 0), 'sub'],
+        ];
+        $('pnl-body').innerHTML = lines.map(([label, amount, kind]) =>
+          `<tr class="${kind}"><td>${esc(label)}</td><td class="num">${esc(amount)}</td></tr>`).join('');
+
+        const biggest = Math.max(1, ...monthRes.data.map((m) => Number(m.net_sales)));
+        $('month-body').innerHTML = monthRes.data.map((m) => {
+          const losses = Number(m.scrap) + Number(m.write_offs) + Number(m.adjustments);
+          const label = new Date(m.period_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+          return `<tr>
+            <td class="nowrap">${esc(label)}</td>
+            <td class="num">${money(m.revenue)}</td><td class="num">${money(m.refunds)}</td>
+            <td class="num">${money(m.net_sales)}</td><td class="num">${money(m.cogs)}</td>
+            <td class="num">${money(m.gross_profit)}</td><td class="num">${percent(m.gross_margin)}</td>
+            <td class="num">${money(losses)}</td><td class="num"><strong>${money(m.profit)}</strong></td>
+            <td class="bar-cell"><div class="bar" style="width:${Math.max(0, Number(m.net_sales)) / biggest * 100}%"></div></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="10" class="muted">No activity in this period.</td></tr>';
+
+        const turn = (turnRes.data && turnRes.data[0]) || {};
+        const plain = (value, digits) => (value === null || value === undefined ? '—'
+          : Number(value).toLocaleString('en-US', { maximumFractionDigits: digits }));
+        const cards = [
+          [money(turn.cogs || 0), 'Cost of goods sold'],
+          [money(turn.avg_inventory_value || 0), 'Average inventory value'],
+          [plain(turn.turnover, 2) + '×', 'Turnover in this period (' + plain(turn.days, 0) + ' days)'],
+          [plain(turn.annual_turnover, 2) + '×', 'Turnover per year'],
+          [plain(turn.days_of_inventory, 0), 'Days of inventory'],
+        ];
+        $('turn-cards').innerHTML = cards.map(([n, label]) =>
+          `<div class="card"><div class="num">${esc(n)}</div><div class="lbl">${esc(label)}</div></div>`).join('');
+      }
+
+      // ---------------- valuation (always "now") ----------------
+      async function loadValuation() {
+        const [locRes, itemRes] = await Promise.all([
+          sb.from('inventory_value_by_location').select('*').order('location_id'),
+          sb.from('inventory_value_detail').select('*').order('sku'),
+        ]);
+        const error = locRes.error || itemRes.error;
+        if (error) { toast(error.message, true); return; }
+
+        $('loc-body').innerHTML = locRes.data.map((l) => `<tr>
+          <td>${esc(l.code)} · ${esc(l.name)}</td><td class="num">${qty(l.units)}</td>
+          <td class="num">${money(l.parts_value)}</td><td class="num">${money(l.boards_value)}</td>
+          <td class="num"><strong>${money(l.value)}</strong></td></tr>`).join('');
+        const sum = (key) => locRes.data.reduce((total, l) => total + Number(l[key]), 0);
+        $('loc-foot').innerHTML = `<tr><td>All locations</td><td class="num">${qty(sum('units'))}</td>
+          <td class="num">${money(sum('parts_value'))}</td><td class="num">${money(sum('boards_value'))}</td>
+          <td class="num">${money(sum('value'))}</td></tr>`;
+
+        // Lay the item rows out as one line per item with a column per location.
+        const codes = locRes.data.map((l) => l.code);
+        const items = new Map();
+        itemRes.data.forEach((r) => {
+          if (!items.has(r.item_id)) items.set(r.item_id, { sku: r.sku, name: r.name, unit_cost: r.unit_cost, qty: {}, value: 0 });
+          const item = items.get(r.item_id);
+          item.qty[r.location_code] = Number(r.qty_on_hand);
+          item.value += Number(r.value);
+        });
+        $('item-head').innerHTML = `<tr><th>SKU</th><th>Item</th>${codes.map((c) => `<th class="num">${esc(c)}</th>`).join('')}
+          <th class="num">Total units</th><th class="num">Average cost</th><th class="num">Value</th></tr>`;
+        $('item-body').innerHTML = [...items.values()].map((i) => `<tr>
+          <td class="nowrap">${esc(i.sku)}</td><td>${esc(i.name)}</td>
+          ${codes.map((c) => `<td class="num">${qty(i.qty[c] || 0)}</td>`).join('')}
+          <td class="num">${qty(codes.reduce((total, c) => total + (i.qty[c] || 0), 0))}</td>
+          <td class="num">${money(i.unit_cost)}</td><td class="num">${money(i.value)}</td></tr>`).join('')
+          || '<tr><td colspan="8" class="muted">No stock.</td></tr>';
+      }
+
+      // ---------------- start ----------------
+      applyPreset();
+      await Promise.all([loadPeriod(), loadValuation()]);
+
+      // Realtime: any sale, return, receipt or build refreshes the page.
+      let reloadTimer;
+      const queueReload = () => {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => { loadPeriod(); loadValuation(); }, 1000);
+      };
+      sb.channel('financials-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'production_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reports · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="sales" aria-selected="true">Sales</button>
+      <button role="tab" data-tab="top" aria-selected="false">Top sellers</button>
+      <button role="tab" data-tab="low" aria-selected="false">Low stock</button>
+      <button role="tab" data-tab="stock" aria-selected="false">Inventory by location</button>
+      <button role="tab" data-tab="suppliers" aria-selected="false">Supplier performance</button>
+    </div>
+
+    <!-- The date range is shared by the Sales and Top sellers tabs. -->
+    <div class="panel" id="range-panel">
+      <div class="inline-form">
+        <label>Quick pick <select id="preset">
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last 365 days</option>
+          <option value="month">This month</option>
+          <option value="custom">Custom dates</option>
+        </select></label>
+        <label>From <input type="date" id="from"></label>
+        <label>To <input type="date" id="to"></label>
+        <label id="grain-label">Group by <select id="grain">
+          <option value="day">Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select></label>
+        <label id="limit-label" hidden>Show top <input class="qty" type="number" id="limit" min="1" max="25" step="1" value="10"></label>
+      </div>
+    </div>
+
+    <!-- ============ Sales ============ -->
+    <div id="tab-sales">
+      <div class="panel">
+        <h2>Sales by location</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Units</th><th class="num">Revenue</th>
+            <th class="num">Gross profit</th><th class="num">Share of revenue</th><th class="bar-cell"></th></tr></thead>
+          <tbody id="loc-body"></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <h2 id="sales-title">Sales by day</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th id="sales-period">Day</th><th class="num">Orders</th><th class="num">Units</th>
+            <th class="num">Revenue</th><th class="num">COGS</th><th class="num">Gross profit</th><th class="bar-cell">Revenue</th></tr></thead>
+          <tbody id="sales-body"></tbody>
+          <tfoot id="sales-foot"></tfoot>
+        </table></div>
+        <p class="muted">Revenue is after discount and before tax. Returns are not taken off here; the P&L on the Financials page does that.</p>
+      </div>
+    </div>
+
+    <!-- ============ Top sellers ============ -->
+    <div id="tab-top" hidden>
+      <div class="panel">
+        <h2>Top sellers by revenue</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th class="num">#</th><th>SKU</th><th>Item</th><th class="num">Units</th><th class="num">Revenue</th>
+            <th class="num">Gross profit</th><th class="num">Margin</th><th class="bar-cell">Revenue</th></tr></thead>
+          <tbody id="top-body"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ============ Low stock ============ -->
+    <div id="tab-low" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Low stock: what to order and by when</h2>
+          <div class="inline-form">
+            <label>Order needed within <input class="qty" type="number" id="low-days" min="0" step="1" value="14"> days</label>
+          </div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>SKU</th><th>Part</th><th>Supplier</th><th class="num">On hand</th><th class="num">On order</th>
+            <th class="num">Reorder point</th><th class="num">Daily usage</th><th class="num">Lead time</th>
+            <th class="num">Suggested order qty</th><th>Order by</th></tr></thead>
+          <tbody id="low-body"></tbody>
+        </table></div>
+        <p class="muted">Order by = the day stock plus on-order is expected to reach the reorder point. Suggested quantity is the EOQ.
+          To place the orders, use <a href="review.html">Due for Review</a> or <a href="mrp.html">MRP</a>.</p>
+      </div>
+    </div>
+
+    <!-- ============ Inventory by location ============ -->
+    <div id="tab-stock" hidden>
+      <div class="panel">
+        <h2>Inventory by location</h2>
+        <div class="table-wrap"><table>
+          <thead id="stock-head"></thead>
+          <tbody id="stock-body"></tbody>
+          <tfoot id="stock-foot"></tfoot>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ============ Supplier performance ============ -->
+    <div id="tab-suppliers" hidden>
+      <div class="panel">
+        <h2>Supplier performance</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Supplier</th><th class="num">POs received</th><th class="num">On-time rate</th>
+            <th class="num">Quoted lead</th><th class="num">Actual lead</th><th class="num">Fill rate</th>
+            <th class="num">Owed now</th><th class="num">Score</th><th>Grade</th><th>Recommendation</th></tr></thead>
+          <tbody id="sup-body"></tbody>
+        </table></div>
+        <p class="muted">The full scorecard and how the score is worked out are on the <a href="suppliers.html">Suppliers</a> page.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Reports');
+      if (!me) return;
+      const { sb, esc, money, percent, qty, date, today, daysAgo, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+      const TABS = ['sales', 'top', 'low', 'stock', 'suppliers'];
+      const bar = (value, biggest) =>
+        `<td class="bar-cell"><div class="bar" style="width:${biggest > 0 ? Math.max(0, Number(value)) / biggest * 100 : 0}%"></div></td>`;
+      const fail = (error) => toast(error.message + ' — has sql/12_financials_reports.sql been run?', true);
+      const range = () => ({ p_from: $('from').value, p_to: $('to').value });
+
+      function applyPreset() {
+        const preset = $('preset').value;
+        if (preset === 'custom') return;
+        $('to').value = today();
+        $('from').value = preset === 'month' ? today().slice(0, 8) + '01' : daysAgo(Number(preset));
+      }
+
+      // ---------------- sales ----------------
+      async function loadSales() {
+        const grain = $('grain').value;
+        const [locRes, salesRes] = await Promise.all([
+          sb.rpc('report_sales_by_location', range()),
+          sb.rpc('report_sales', { ...range(), p_grain: grain }),
+        ]);
+        const error = locRes.error || salesRes.error;
+        if (error) { fail(error); return; }
+
+        const topLoc = Math.max(0, ...locRes.data.map((l) => Number(l.revenue)));
+        $('loc-body').innerHTML = locRes.data.map((l) => `<tr>
+          <td>${esc(l.location_code)} · ${esc(l.location_name)}</td>
+          <td class="num">${qty(l.orders)}</td><td class="num">${qty(l.units)}</td>
+          <td class="num">${money(l.revenue)}</td><td class="num">${money(l.gross_profit)}</td>
+          <td class="num">${percent(l.revenue_share)}</td>${bar(l.revenue, topLoc)}</tr>`).join('');
+
+        const word = { day: 'Day', week: 'Week starting', month: 'Month' }[grain];
+        $('sales-title').textContent = 'Sales by ' + grain;
+        $('sales-period').textContent = word;
+        const label = (start) => (grain === 'month'
+          ? new Date(start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          : new Date(start + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }));
+        const top = Math.max(0, ...salesRes.data.map((s) => Number(s.revenue)));
+        $('sales-body').innerHTML = salesRes.data.map((s) => `<tr>
+          <td class="nowrap">${esc(label(s.period_start))}</td>
+          <td class="num">${qty(s.orders)}</td><td class="num">${qty(s.units)}</td>
+          <td class="num">${money(s.revenue)}</td><td class="num">${money(s.cogs)}</td>
+          <td class="num">${money(s.gross_profit)}</td>${bar(s.revenue, top)}</tr>`).join('')
+          || '<tr><td colspan="7" class="muted">No sales in this period.</td></tr>';
+        // The total row comes from the by-location result, which covers the same sales.
+        const sum = (key) => locRes.data.reduce((total, l) => total + Number(l[key]), 0);
+        $('sales-foot').innerHTML = `<tr><td>Total</td><td class="num">${qty(sum('orders'))}</td><td class="num">${qty(sum('units'))}</td>
+          <td class="num">${money(sum('revenue'))}</td><td class="num">${money(sum('revenue') - sum('gross_profit'))}</td>
+          <td class="num">${money(sum('gross_profit'))}</td><td></td></tr>`;
+      }
+
+      // ---------------- top sellers ----------------
+      async function loadTop() {
+        const { data, error } = await sb.rpc('report_top_sellers', { ...range(), p_limit: Number($('limit').value) || 10 });
+        if (error) { fail(error); return; }
+        const top = Math.max(0, ...data.map((r) => Number(r.revenue)));
+        $('top-body').innerHTML = data.map((r, index) => `<tr>
+          <td class="num">${index + 1}</td><td class="nowrap">${esc(r.sku)}</td><td>${esc(r.name)}</td>
+          <td class="num">${qty(r.units)}</td><td class="num">${money(r.revenue)}</td>
+          <td class="num">${money(r.gross_profit)}</td><td class="num">${percent(r.gross_margin)}</td>${bar(r.revenue, top)}</tr>`).join('')
+          || '<tr><td colspan="8" class="muted">No sales in this period.</td></tr>';
+      }
+
+      // ---------------- low stock ----------------
+      async function loadLow() {
+        const within = Math.max(0, Number($('low-days').value) || 0);
+        const { data, error } = await sb.from('low_stock_report').select('*')
+          .lte('days_until_reorder', within).order('order_by_date').order('sku');
+        if (error) { fail(error); return; }
+        const n1 = (value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 });
+        $('low-body').innerHTML = data.map((r) => `<tr>
+          <td class="nowrap">${esc(r.sku)}</td><td>${esc(r.name)}</td><td>${esc(r.supplier_name)}</td>
+          <td class="num">${qty(r.on_hand)}</td><td class="num">${qty(r.on_order)}</td>
+          <td class="num">${n1(r.reorder_point)}</td><td class="num">${n1(r.avg_daily_usage)}</td>
+          <td class="num">${esc(r.lead_time_days)} d</td><td class="num"><strong>${qty(r.suggested_qty)}</strong></td>
+          <td class="nowrap">${r.needs_reorder ? '<span class="bad-text">Today</span>' : esc(date(r.order_by_date))}</td></tr>`).join('')
+          || '<tr><td colspan="10" class="muted">Nothing needs ordering within that many days.</td></tr>';
+      }
+
+      // ---------------- inventory by location ----------------
+      async function loadStock() {
+        const [locRes, itemRes] = await Promise.all([
+          sb.from('inventory_value_by_location').select('*').order('location_id'),
+          sb.from('inventory_value_detail').select('*').order('sku'),
+        ]);
+        const error = locRes.error || itemRes.error;
+        if (error) { fail(error); return; }
+        const codes = locRes.data.map((l) => l.code);
+        const items = new Map();
+        itemRes.data.forEach((r) => {
+          if (!items.has(r.item_id)) items.set(r.item_id, { sku: r.sku, name: r.name, qty: {}, value: 0 });
+          items.get(r.item_id).qty[r.location_code] = Number(r.qty_on_hand);
+          items.get(r.item_id).value += Number(r.value);
+        });
+        $('stock-head').innerHTML = `<tr><th>SKU</th><th>Item</th>${codes.map((c) => `<th class="num">${esc(c)}</th>`).join('')}
+          <th class="num">Total units</th><th class="num">Value</th></tr>`;
+        $('stock-body').innerHTML = [...items.values()].map((i) => `<tr>
+          <td class="nowrap">${esc(i.sku)}</td><td>${esc(i.name)}</td>
+          ${codes.map((c) => `<td class="num">${i.qty[c] ? qty(i.qty[c]) : '<span class="muted">0</span>'}</td>`).join('')}
+          <td class="num">${qty(codes.reduce((total, c) => total + (i.qty[c] || 0), 0))}</td>
+          <td class="num">${money(i.value)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No stock.</td></tr>';
+        // Totals per location come from the by-location view.
+        $('stock-foot').innerHTML = `<tr><td colspan="2">Units · value</td>
+          ${locRes.data.map((l) => `<td class="num">${qty(l.units)}<br>${money(l.value)}</td>`).join('')}
+          <td class="num">${qty(locRes.data.reduce((t, l) => t + Number(l.units), 0))}</td>
+          <td class="num">${money(locRes.data.reduce((t, l) => t + Number(l.value), 0))}</td></tr>`;
+      }
+
+      // ---------------- supplier performance ----------------
+      async function loadSuppliers() {
+        const { data, error } = await sb.from('supplier_scorecard').select('*').order('score', { ascending: false });
+        if (error) { toast(error.message + ' — has sql/11_planning.sql been run?', true); return; }
+        const tone = { Keep: 'ok-text', Watch: '', Replace: 'bad-text' };
+        const d1 = (value) => (value === null || value === undefined ? '—' : Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' d');
+        $('sup-body').innerHTML = data.map((s) => `<tr>
+          <td><strong>${esc(s.name)}</strong></td><td class="num">${esc(s.pos_received)}</td>
+          <td class="num">${percent(s.on_time_rate, 0)}</td><td class="num">${esc(s.quoted_lead_time_days)} d</td>
+          <td class="num">${d1(s.avg_actual_lead)}</td><td class="num">${percent(s.fill_rate)}</td>
+          <td class="num">${Number(s.payables) > 0 ? money(s.payables) : '—'}</td>
+          <td class="num">${s.score === null ? '—' : esc(s.score)}</td><td><strong>${esc(s.grade || '—')}</strong></td>
+          <td><span class="${tone[s.recommendation] || ''}"><strong>${esc(s.recommendation || '—')}</strong></span></td></tr>`).join('');
+      }
+
+      // ---------------- tabs ----------------
+      const LOADERS = { sales: loadSales, top: loadTop, low: loadLow, stock: loadStock, suppliers: loadSuppliers };
+      let currentTab = 'sales';
+      function showTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tabs button').forEach((b) =>
+          b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+        TABS.forEach((t) => { $('tab-' + t).hidden = t !== name; });
+        $('range-panel').hidden = !(name === 'sales' || name === 'top');
+        $('grain-label').hidden = name !== 'sales';
+        $('limit-label').hidden = name !== 'top';
+        LOADERS[name]();
+      }
+      document.querySelector('.tabs').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-tab]');
+        if (button) showTab(button.dataset.tab);
+      });
+
+      const reload = () => LOADERS[currentTab]();
+      $('preset').addEventListener('change', () => { applyPreset(); reload(); });
+      ['from', 'to'].forEach((id) => $(id).addEventListener('change', () => { $('preset').value = 'custom'; reload(); }));
+      ['grain', 'limit', 'low-days'].forEach((id) => $(id).addEventListener('change', reload));
+
+      // ---------------- start ----------------
+      applyPreset();
+      showTab('sales');
+
+      // Realtime: new sales, stock changes and purchase orders refresh the open tab.
+      let reloadTimer;
+      const queueReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(reload, 1000); };
+      sb.channel('reports-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

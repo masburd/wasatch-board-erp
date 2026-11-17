@@ -132,27 +132,30 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
 | 7 | Production orders and metrics | **Done** — `sql/09` run, live, test confirmed. |
 | 8 | History generator (12 months, all through the ledger) | **Done** — `sql/10` run and confirmed. |
-| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **In progress** — built and committed. Still to do: run `sql/11`, push, and try it (see Open issues). |
-| 10 | Financials and reports | **Next** |
-| 11 | Customer portal and configurator | |
+| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Done** — `sql/11` run, live, confirmed. |
+| 10 | Financials and reports | **In progress** — built and committed. Still to do: run `sql/12`, push, and try it (see Open issues). |
+| 11 | Customer portal and configurator | **Next** (after the MRP weekly view, see Open issues) |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
 Status last updated: 2026-11-16 (session 4).
 
 ## Open issues / to-do
 
-### To finish step 9 (Mason, in this order)
+### To finish step 10 (Mason, in this order)
 
-1. **Supabase → SQL Editor:** run `sql/11_planning.sql`. Expected result: 6 rows, one per supplier, with a score, grade and recommendation. Roughly: Timberline lowest (late, D or F, Replace); Urethane and GripLine in the middle (Watch); Ridgeline, Precision Spin and Beehive A (Keep).
+1. **Supabase → SQL Editor:** run `sql/12_financials_reports.sql`. Expected result: one row, the P&L for the last 365 days. `net_sales` = `revenue` − `refunds`; `gross_profit` = `net_sales` − `cogs`; `profit` = `gross_profit` − `scrap` − `write_offs` − `adjustments`.
 2. **GitHub Desktop:** Push origin.
 3. **Live site:** hard-refresh and try the checks below.
 
-Try it (exact numbers depend on the generated history, so check behaviour, not figures):
-- **Suppliers:** the scorecard panel matches the SQL result.
-- **Due for Review:** every item says "Never reviewed". Switch the first filter to "At or below reorder point", tick a part, click **Create draft POs for ticked parts**: a draft PO appears in Purchasing and the part's next review date moves 30 days out.
-- **Settings:** change "Service level z" from 1.65 to 2.33 and Save. Back on Due for Review, safety stock and reorder points are higher. Change "Ordering cost per PO" to 100: every EOQ doubles. Put both back.
-- **MRP:** the 12-longboard sales order shows under "Open sales orders" for `WBC-2004`, and the planned production order of 12 shows under "Open production". Change the planning days from 30 to 60: forecasts and net needs grow. Click **Create production order** on a board with a net need: its net drops and its parts move from "For boards to build" to "For planned jobs".
-- **Dashboard:** an "Items at reorder point" card.
+Try it:
+- **Financials:** the P&L matches the SQL result. The monthly table shows a summer peak and a December bump. Change the quick pick to "Last 30 days": every number changes.
+- **Live update:** keep Financials open in one window, ring up a sale at the POS in another. Within a few seconds revenue goes up by the sale's subtotal.
+- **Reports → Sales:** switch "Group by" between Day, Week and Month. Provo and SLC split the revenue; Orem has none.
+- **Reports → Top sellers / Low stock / Inventory by location / Supplier performance:** each tab fills in.
+
+### Gap against the spec: MRP weekly view
+
+SPEC capability 8 asks for a weekly MRP view over the next 4 weeks with an order-by date (requirement date minus component lead time). The MRP page built in step 9 plans one window (default 30 days) and has no weekly buckets. To do before the demo.
 
 ### Step 6 loose ends
 

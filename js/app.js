@@ -32,8 +32,8 @@ const WBC = (() => {
       { href: 'mrp.html', label: 'MRP', built: true },
     ]},
     { group: 'Analyze', links: [
-      { href: 'financials.html', label: 'Financials' },
-      { href: 'reports.html', label: 'Reports' },
+      { href: 'financials.html', label: 'Financials', built: true },
+      { href: 'reports.html', label: 'Reports', built: true },
     ]},
     { group: 'System', links: [
       { href: 'settings.html', label: 'Settings', built: true },
@@ -185,6 +185,13 @@ const WBC = (() => {
     return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   }
 
+  // The date n days before today, as YYYY-MM-DD (for "last 30 days" date boxes).
+  function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
   // Show a stored date (YYYY-MM-DD) as "Nov 16, 2026".
   function date(value) {
     if (!value) return '—';
@@ -306,7 +313,7 @@ const WBC = (() => {
   }
 
   return {
-    sb, configured, esc, money, percent, qty, dateTime, today, date, dateOf, poNumber, moNumber, toast,
+    sb, configured, esc, money, percent, qty, dateTime, today, daysAgo, date, dateOf, poNumber, moNumber, toast,
     scanBox, findByCode, cameraScan, soNumber, createDraftPOs, initPage, signOut, showSetupNotice,
   };
 })();

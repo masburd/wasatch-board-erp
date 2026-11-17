@@ -16,8 +16,10 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
 - **Step 7 (production orders and metrics) done and live:** `sql/09` run, test confirmed by the user on 2026-11-16.
 - **Step 8 (history generator) done:** `sql/10_history.sql` run and confirmed by the user on 2026-11-16. Re-running it erases and rebuilds all transactions.
-- **Step 9 (planning) built and committed, not yet live or confirmed:** `sql/11_planning.sql`, `review.html`, `mrp.html`, `settings.html`, scorecard panel on `suppliers.html`. The user still has to run `sql/11`, push, and try it (PLAN.md → "Open issues / to-do"). Pages tested locally with the fake database only; the SQL has never been run.
-- **Next to build:** step 10, financials and reports.
+- **Step 9 (planning) done and live:** `sql/11` run, confirmed by the user on 2026-11-16.
+- **Step 10 (financials and reports) built and committed, not yet live or confirmed:** `sql/12_financials_reports.sql`, `financials.html`, `reports.html`. The user still has to run `sql/12`, push, and try it (PLAN.md → "Open issues / to-do"). Pages tested locally with the fake database only; the SQL has never been run.
+- **Known gap against SPEC capability 8:** MRP is one planning window. The spec asks for a weekly view over the next 4 weeks and an order-by date (requirement date minus component lead time). Raise this with the user before step 11.
+- **Next to build:** the MRP weekly view (if the user agrees), then step 11, customer portal and configurator.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -33,7 +35,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
 | 9 | `sql/09_production.sql` | Yes |
 | 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
-| 11 | `sql/11_planning.sql` | **Not confirmed** — ask the user |
+| 11 | `sql/11_planning.sql` | Yes |
+| 12 | `sql/12_financials_reports.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -72,6 +75,10 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Two settings were added: `usage_window_days` (90) and `mrp_horizon_days` (30). Settings are edited on `settings.html` with a direct table update (staff only).
 - "Mark reviewed" is a direct update of `items.last_reviewed_at` from the page. The history generator leaves every item "never reviewed".
 - `WBC.createDraftPOs(lines)` makes one draft PO per supplier; used by Due for Review and MRP.
+- Financials and reports add no tables. `sales_facts` view (one row per fulfilled sales line with Mountain `sale_date`) feeds `report_sales(from, to, grain)`, `report_sales_by_location(from, to)` and `report_top_sellers(from, to, limit)`.
+- `pnl(from, to, 'total' | 'month')` is the P&L: revenue − refunds = net sales; − (COGS sold − COGS returned) = gross profit; − production scrap − return write-offs − stock adjustments = profit. Sales count on the hand-over date (`fulfilled_at`, else `order_date`). Tax collected is shown but is not revenue. There are no operating expenses in the system.
+- `inventory_turnover(from, to)` = COGS ÷ the average of each day's closing stock value, where a day's value is the running sum of ledger `qty_change × unit_cost`. That ledger value can differ from `inventory_value` (qty × current average cost) by a few dollars of rounding, so the page shows only the average.
+- Valuation uses `inventory_value_detail` and `inventory_value_by_location`. `low_stock_report` adds `order_by_date` (the day stock + on order reaches the reorder point) to `item_planning`.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 

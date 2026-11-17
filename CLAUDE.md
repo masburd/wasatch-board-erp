@@ -18,8 +18,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 8 (history generator) done:** `sql/10_history.sql` run and confirmed by the user on 2026-11-16. Re-running it erases and rebuilds all transactions.
 - **Step 9 (planning) done and live:** `sql/11` run, confirmed by the user on 2026-11-16.
 - **Step 10 (financials and reports) built and committed, not yet live or confirmed:** `sql/12_financials_reports.sql`, `financials.html`, `reports.html`. The user still has to run `sql/12`, push, and try it (PLAN.md → "Open issues / to-do"). Pages tested locally with the fake database only; the SQL has never been run.
-- **Known gap against SPEC capability 8:** MRP is one planning window. The spec asks for a weekly view over the next 4 weeks and an order-by date (requirement date minus component lead time). Raise this with the user before step 11.
-- **Next to build:** the MRP weekly view (if the user agrees), then step 11, customer portal and configurator.
+- **Weekly MRP (SPEC capability 8) built and committed, not yet live or confirmed:** `sql/13_mrp_weekly.sql` and a "Weekly plan" tab on `mrp.html`. The SQL has never been run.
+- **Next to build:** step 11, customer portal and configurator.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -37,6 +37,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
 | 11 | `sql/11_planning.sql` | Yes |
 | 12 | `sql/12_financials_reports.sql` | **Not confirmed** — ask the user |
+| 13 | `sql/13_mrp_weekly.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -71,6 +72,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - PO prices in history drift −3% to +5% around `standard_cost`, so `avg_cost` differs from `standard_cost` after the history is built.
 - Planning is all views and functions, no new tables. `item_usage_stats` (d, σ, daily sales, annual usage from `sale` + `production_issue` ledger rows over the `usage_window_days` setting) → `item_planning` (on hand, on order, safety stock, reorder point, EOQ, `needs_reorder`, `review_due`). A board's lead time is treated as 1 day and its "on order" is open production.
 - MRP is two functions with a horizon in days: `mrp_parents(p_days)` (forecast + open sales orders − on hand − open production) and `mrp_components(p_days)` (net boards × BOM + parts for planned jobs + part sales forecast + open orders − on hand − open PO quantity). Single bucket, no safety stock, no time phasing. Draft POs do not count as on order until sent.
+- `mrp_weekly(p_weeks)` is the time-phased plan (week 1 starts today, 7-day weeks, lot-for-lot, no safety stock). Boards are netted first; each week's net boards × BOM becomes that week's dependent demand for parts. Sales orders land in the week of `requested_date`, sent POs in the week of `expected_date`, open production orders in week 1. Net per week comes from a running maximum of (cumulative gross − on hand − cumulative scheduled). `order_by_date` = week start − lead time, never before today; `overdue` marks parts that cannot arrive in time. The weekly tab is read-only: ordering is done on the "Order now" tab.
 - `supplier_scorecard` view: score = 40% on-time rate + 40% fill score (1 − 4 × shortfall) + 20% lead-time score; A = Keep, B/C = Watch, D/F = Replace. The weights are in the view, not in settings.
 - Two settings were added: `usage_window_days` (90) and `mrp_horizon_days` (30). Settings are edited on `settings.html` with a direct table update (staff only).
 - "Mark reviewed" is a direct update of `items.last_reviewed_at` from the page. The history generator leaves every item "never reviewed".

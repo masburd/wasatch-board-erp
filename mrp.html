@@ -8,6 +8,52 @@
 </head>
 <body>
   <div id="content" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="weekly" aria-selected="true">Weekly plan (next 4 weeks)</button>
+      <button role="tab" data-tab="window" aria-selected="false">Order now (one planning window)</button>
+    </div>
+
+    <!-- =====================================================
+         Tab 1: week-by-week plan
+         ===================================================== -->
+    <div id="tab-weekly">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Weekly material plan</h2>
+          <div class="inline-form">
+            <label>Show <select id="w-show">
+              <option value="planned">Items with something to order or build</option>
+              <option value="all">All items</option>
+            </select></label>
+          </div>
+        </div>
+        <p class="muted" style="margin:0">Week 1 starts today. Boards are planned first; the boards to build each week are
+          multiplied through the bill of materials to give the parts needed that week. Order by = the start of the week
+          minus the lead time (supplier lead time for parts, 1 day to build a board).</p>
+      </div>
+      <div class="panel">
+        <h2>Boards to build</h2>
+        <div class="table-wrap"><table>
+          <thead id="wb-head"></thead>
+          <tbody id="wb-body"><tr><td class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <h2>Parts to buy</h2>
+        <div class="table-wrap"><table>
+          <thead id="wp-head"></thead>
+          <tbody id="wp-body"><tr><td class="muted">Loading…</td></tr></tbody>
+        </table></div>
+        <p class="muted">Gross need = sales forecast + open sales orders + parts for boards to build.
+          Scheduled receipts = sent purchase orders (parts) or open production orders (boards).
+          Planned order = what is still short that week. To place the orders, use the "Order now" tab.</p>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         Tab 2: one planning window, with order buttons
+         ===================================================== -->
+    <div id="tab-window" hidden>
     <div class="panel">
       <div class="panel-head">
         <h2>Material requirements planning</h2>
@@ -56,6 +102,7 @@
       <p class="muted">For boards to build = net boards from step 1 × the BOM quantity. For planned jobs = parts that
         planned production orders will take when they are issued. On order = still coming on sent purchase orders.
         Suggested order quantity = the larger of the net need and the EOQ.</p>
+    </div>
     </div>
   </div>
 
@@ -137,6 +184,75 @@
         }).join('') || '<tr><td colspan="15" class="muted">No parts.</td></tr>';
       }
 
+      // ---------------- weekly plan ----------------
+      let weekly = [];   // rows from mrp_weekly(): one per item per week
+
+      async function loadWeekly() {
+        const { data, error } = await sb.rpc('mrp_weekly', { p_weeks: 4 });
+        if (error) {
+          const message = error.message + ' — has sql/13_mrp_weekly.sql been run?';
+          $('wb-body').innerHTML = $('wp-body').innerHTML = `<tr><td class="muted">${esc(message)}</td></tr>`;
+          return;
+        }
+        weekly = data;
+        renderWeekly();
+      }
+
+      // One block of five rows per item: gross need, scheduled receipts,
+      // planned order, order-by date and projected stock, with a column per week.
+      function renderWeekly() {
+        const showAll = $('w-show').value === 'all';
+        ['board', 'part'].forEach((level) => {
+          const head = $(level === 'board' ? 'wb-head' : 'wp-head');
+          const body = $(level === 'board' ? 'wb-body' : 'wp-body');
+          const rows = weekly.filter((r) => r.level === level);
+          const weeks = [...new Map(rows.map((r) => [r.week_no, r.week_start])).entries()].sort((a, b) => a[0] - b[0]);
+          const short = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+          head.innerHTML = `<tr><th>Item</th><th class="num">On hand</th><th class="num">Lead time</th><th></th>
+            ${weeks.map(([n, start]) => `<th class="num">Week ${n}<br><span class="muted">from ${esc(short(start))}</span></th>`).join('')}</tr>`;
+
+          const byItem = new Map();
+          rows.forEach((r) => { if (!byItem.has(r.item_id)) byItem.set(r.item_id, []); byItem.get(r.item_id).push(r); });
+          const blocks = [...byItem.values()]
+            .filter((item) => showAll || item.some((r) => Number(r.net) > 0))
+            .map((item) => {
+              const first = item[0];
+              const cells = (draw) => item.map((r) => `<td class="num">${draw(r)}</td>`).join('');
+              const grossTitle = (r) => `forecast ${qty(r.forecast)} + sales orders ${qty(r.orders)}`
+                + (level === 'part' ? ` + for boards ${qty(r.dependent)}` : '');
+              return `<tr class="week-first">
+                  <td rowspan="5"><strong>${esc(first.sku)}</strong><br>${esc(first.name)}
+                    ${level === 'part' ? `<br><span class="muted">${esc(supplierName.get(first.supplier_id) || '')}</span>` : ''}</td>
+                  <td rowspan="5" class="num">${qty(first.on_hand)}</td>
+                  <td rowspan="5" class="num">${esc(first.lead_time_days)} d</td>
+                  <td class="muted">Gross need</td>${cells((r) => `<span title="${esc(grossTitle(r))}">${zero(r.gross)}</span>`)}</tr>
+                <tr><td class="muted">Scheduled receipts</td>${cells((r) => zero(r.scheduled))}</tr>
+                <tr><td><strong>${level === 'part' ? 'Planned order' : 'Planned build'}</strong></td>${cells((r) =>
+                  (Number(r.net) > 0 ? `<strong class="bad-text">${qty(r.net)}</strong>` : '<span class="muted">0</span>'))}</tr>
+                <tr><td class="muted">${level === 'part' ? 'Order by' : 'Start by'}</td>${cells((r) => (!r.order_by_date ? ''
+                  : r.overdue ? `<span class="bad-text nowrap">Overdue · do it today</span>`
+                  : `<span class="nowrap">${esc(short(r.order_by_date))}</span>`))}</tr>
+                <tr><td class="muted">Projected stock</td>${cells((r) => qty(r.projected))}</tr>`;
+            });
+          body.innerHTML = blocks.join('') || `<tr><td colspan="${4 + weeks.length}" class="muted">Nothing to ${level === 'part' ? 'order' : 'build'} in the next 4 weeks.</td></tr>`;
+        });
+      }
+      $('w-show').addEventListener('change', renderWeekly);
+
+      // ---------------- tabs ----------------
+      let currentTab = 'weekly';
+      function showTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tabs button').forEach((b) =>
+          b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+        ['weekly', 'window'].forEach((t) => { $('tab-' + t).hidden = t !== name; });
+      }
+      document.querySelector('.tabs').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-tab]');
+        if (button) showTab(button.dataset.tab);
+      });
+
       $('run-btn').addEventListener('click', load);
       $('horizon').addEventListener('change', load);
 
@@ -155,6 +271,7 @@
         if (error) { toast(error.message, true); return; }
         toast(moNumber(data) + ' planned. Its parts now show under "For planned jobs".');
         await load();
+        loadWeekly();
       });
 
       // ---- step 2: draft purchase orders for parts ----
@@ -194,6 +311,7 @@
           ticked = new Set(); orderQty = new Map();
         }
         await load();
+        loadWeekly();
       });
 
       // ---- start ----
@@ -203,7 +321,7 @@
       ]);
       $('horizon').value = setRes.data ? Number(setRes.data.value) : 30;
       supplierName = new Map((supRes.data || []).map((s) => [s.id, s.name]));
-      await load();
+      await Promise.all([load(), loadWeekly()]);
 
       // Realtime: sales orders, production orders, purchase orders and stock
       // all change the plan. (Skipped while someone is typing a quantity.)
@@ -212,7 +330,7 @@
         clearTimeout(reloadTimer);
         reloadTimer = setTimeout(() => {
           const active = document.activeElement;
-          if (active && active.matches('input.qty')) queueReload(); else load();
+          if (active && active.matches('input.qty')) queueReload(); else { load(); loadWeekly(); }
         }, 800);
       };
       sb.channel('mrp-page')

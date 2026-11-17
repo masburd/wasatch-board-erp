@@ -153,9 +153,11 @@ Try it:
 - **Reports → Sales:** switch "Group by" between Day, Week and Month. Provo and SLC split the revenue; Orem has none.
 - **Reports → Top sellers / Low stock / Inventory by location / Supplier performance:** each tab fills in.
 
-### Gap against the spec: MRP weekly view
+### To finish the weekly MRP (Mason, in this order)
 
-SPEC capability 8 asks for a weekly MRP view over the next 4 weeks with an order-by date (requirement date minus component lead time). The MRP page built in step 9 plans one window (default 30 days) and has no weekly buckets. To do before the demo.
+1. **Supabase → SQL Editor:** run `sql/13_mrp_weekly.sql` (after `sql/12`). Expected result: a list of planned orders for the next 4 weeks; `WBC-2004` should appear, because of the 12-longboard sales order.
+2. **GitHub Desktop:** Push origin.
+3. **Live site → MRP:** the first tab is "Weekly plan (next 4 weeks)". Each item has five rows: gross need, scheduled receipts, planned order, order by, projected stock. Switch "Show" to "All items" to see every item. Place a new sales order for a board with a requested date two weeks out: that week's gross need for the board goes up, and so does the same week's need for its parts.
 
 ### Step 6 loose ends
 

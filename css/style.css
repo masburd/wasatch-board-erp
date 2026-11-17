@@ -217,3 +217,4 @@ a.btn { text-decoration: none; display: inline-block; }
 table.statement td:first-child { padding-left: 14px; }
 table.statement tr.sub td:first-child { padding-left: 30px; color: var(--muted); }
 table.statement tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+tr.week-first td { border-top: 2px solid var(--line); }

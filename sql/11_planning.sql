@@ -131,6 +131,31 @@ select
 from calc c;
 
 -- ---------------------------------------------------------------------
+-- planned_job_parts: parts that planned production orders will take
+-- when they are issued.
+--   a standard board  -> its BOM x the order quantity
+--   a custom build    -> its own one-time parts list (build step 11)
+-- Both MRP screens add this to the demand for parts.
+-- ---------------------------------------------------------------------
+create or replace view public.planned_job_parts
+with (security_invoker = true) as
+select x.item_id, sum(x.qty) as qty
+from (
+  select c.item_id, c.qty_issued as qty
+  from public.production_orders o
+  join public.production_order_components c on c.production_order_id = o.id
+  where o.status = 'planned'
+  union all
+  select b.component_item_id, o.qty_started * b.qty
+  from public.production_orders o
+  join public.bom_lines b on b.parent_item_id = o.item_id
+  where o.status = 'planned'
+    and not exists (select 1 from public.production_order_components c
+                    where c.production_order_id = o.id)
+) x
+group by x.item_id;
+
+-- ---------------------------------------------------------------------
 -- MRP, level 1: the boards.
 --   forecast      = average boards sold per day x the horizon
 --   open_orders   = boards on placed sales orders not yet handed over
@@ -218,11 +243,7 @@ as $$
     group by b.component_item_id
   ),
   planned as (
-    select b.component_item_id as item_id, sum(o.qty_started * b.qty) as qty
-    from production_orders o
-    join bom_lines b on b.parent_item_id = o.item_id
-    where o.status = 'planned'
-    group by b.component_item_id
+    select item_id, qty from planned_job_parts
   ),
   ordered as (
     select l.item_id, sum(l.qty - l.qty_fulfilled) as qty

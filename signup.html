@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create an account · Wasatch Board Co.</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="center-card">
+    <h1>Wasatch Board Co.</h1>
+    <p class="muted">Create a customer account to see what is in stock and order for store pickup.</p>
+
+    <form id="signup-form" class="stack">
+      <label>Email
+        <input type="email" id="email" autocomplete="username" required>
+      </label>
+      <label>Password (at least 8 characters)
+        <input type="password" id="password" autocomplete="new-password" minlength="8" required>
+      </label>
+      <button type="submit" class="btn primary" id="signup-btn">Create account</button>
+    </form>
+    <p class="error-text" id="signup-error" role="alert"></p>
+    <p class="muted" id="signup-note"></p>
+    <p class="muted">Already have an account? <a href="index.html">Sign in</a></p>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      if (!WBC.configured) { WBC.showSetupNotice(); return; }
+      const errorEl = document.getElementById('signup-error');
+      const button = document.getElementById('signup-btn');
+
+      document.getElementById('signup-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorEl.textContent = '';
+        button.disabled = true;
+        // Supabase creates the login. A database trigger then gives it a
+        // profile with the role "customer" (never staff).
+        const { data, error } = await WBC.sb.auth.signUp({
+          email: document.getElementById('email').value.trim(),
+          password: document.getElementById('password').value,
+        });
+        button.disabled = false;
+        if (error) { errorEl.textContent = error.message; return; }
+
+        if (data.session) {
+          // Signed in straight away: the shop asks for a name and home store.
+          window.location.replace('portal.html');
+        } else {
+          // The project requires email confirmation before the first sign-in.
+          document.getElementById('signup-form').hidden = true;
+          document.getElementById('signup-note').textContent =
+            'Account created. Check your email for a confirmation link, then sign in.';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

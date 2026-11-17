@@ -9,7 +9,7 @@
 <body>
   <main class="center-card">
     <h1>Wasatch Board Co.</h1>
-    <p class="muted">Sign in to the ERP</p>
+    <p class="muted">Sign in: staff go to the ERP, customers to the shop</p>
 
     <form id="login-form" class="stack">
       <label>Email
@@ -21,6 +21,7 @@
       <button type="submit" class="btn primary" id="login-btn">Sign in</button>
     </form>
     <p class="error-text" id="login-error" role="alert"></p>
+    <p class="muted">New customer? <a href="signup.html">Create an account</a></p>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -33,16 +34,11 @@
       const errorEl = document.getElementById('login-error');
       const button = document.getElementById('login-btn');
 
-      // Staff go to the dashboard. The customer portal arrives in build step 11.
+      // Staff go to the dashboard; everyone else is a customer and goes to the shop.
       async function route(userId) {
         const { data: profile } = await WBC.sb
           .from('profiles').select('role').eq('id', userId).maybeSingle();
-        if (profile && profile.role === 'staff') {
-          window.location.replace('dashboard.html');
-        } else {
-          errorEl.textContent = 'Signed in, but this login is not staff yet. Run sql/03_make_me_staff.sql for this email, then sign in again.';
-          await WBC.sb.auth.signOut();
-        }
+        window.location.replace(profile && profile.role === 'staff' ? 'dashboard.html' : 'portal.html');
       }
 
       // Already signed in? Skip the form.

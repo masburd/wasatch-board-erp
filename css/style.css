@@ -218,3 +218,13 @@ table.statement td:first-child { padding-left: 14px; }
 table.statement tr.sub td:first-child { padding-left: 30px; color: var(--muted); }
 table.statement tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
 tr.week-first td { border-top: 2px solid var(--line); }
+
+/* Customer portal */
+.portal-top { background: var(--side); color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.portal-top .brand { font-weight: 700; font-size: 18px; }
+.portal-top .brand small { font-weight: 400; opacity: 0.7; margin-left: 8px; }
+.portal-main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.stock-ok { color: #1a7f4b; }
+.stock-none { color: #9aa1ab; }
+.order-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.order-card h3 { margin: 0 0 6px; font-size: 16px; }

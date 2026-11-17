@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop · Wasatch Board Co.</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="portal-top">
+    <div class="brand">Wasatch Board Co.<small>Order online, pick up in store</small></div>
+    <div class="user">
+      <span id="who"></span>
+      <a class="btn small" id="staff-link" href="dashboard.html" hidden>Staff ERP</a>
+      <button class="btn small" id="signout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main class="portal-main">
+    <!-- ============ first visit: finish the account ============ -->
+    <div class="panel" id="register-panel" hidden>
+      <h2>Welcome! Tell us who you are</h2>
+      <form id="register-form">
+        <div class="form-grid">
+          <label class="wide">Your name <input id="reg-name" required maxlength="120"></label>
+          <label>Phone (optional) <input id="reg-phone" maxlength="40"></label>
+          <label>Your usual store <select id="reg-store"></select></label>
+        </div>
+        <p class="error-text" id="reg-error" role="alert"></p>
+        <div class="form-actions"><button type="submit" class="btn primary">Start shopping</button></div>
+      </form>
+    </div>
+
+    <div id="shop" hidden>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="catalog" aria-selected="true">Shop</button>
+        <button role="tab" data-tab="build" aria-selected="false">Build Your Own Board</button>
+        <button role="tab" data-tab="cart" aria-selected="false" id="cart-tab">Cart</button>
+        <button role="tab" data-tab="orders" aria-selected="false">My orders</button>
+      </div>
+
+      <!-- ============ catalog ============ -->
+      <div id="tab-catalog">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>What we have, and where</h2>
+            <div class="toolbar" style="margin:0">
+              <input id="search" placeholder="Search by name" aria-label="Search by name">
+              <select id="category" aria-label="Category"><option value="">Everything</option></select>
+            </div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead id="cat-head"></thead>
+            <tbody id="cat-body"><tr><td class="muted">Loading…</td></tr></tbody>
+          </table></div>
+          <p class="muted">Stock numbers are live. You can order something a store does not have: we move it from
+            another location or order it in, and your order shows the expected date.</p>
+        </div>
+      </div>
+
+      <!-- ============ build your own ============ -->
+      <div id="tab-build" hidden>
+        <div class="panel">
+          <h2>Build Your Own Board</h2>
+          <p class="muted">Pick a deck first. Each list then only shows parts that fit it.</p>
+          <div class="form-grid">
+            <label>1. Deck <select id="b-deck"></select></label>
+            <label>2. Trucks <select id="b-trucks"></select></label>
+            <label>3. Wheels <select id="b-wheels"></select></label>
+            <label>4. Bearings <select id="b-bearings"></select></label>
+            <label>5. Grip tape <select id="b-grip"></select></label>
+            <label>Pick up at <select id="b-store"></select></label>
+          </div>
+          <h3 style="margin:18px 0 8px">Your board</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Part</th><th>Why it is here</th><th>In our workshop</th><th class="num">Price</th></tr></thead>
+            <tbody id="b-body"></tbody>
+            <tfoot id="b-foot"></tfoot>
+          </table></div>
+          <p class="error-text" id="b-error" role="alert"></p>
+          <div class="form-actions"><button class="btn primary" id="b-order">Order this board</button></div>
+          <p class="muted">We assemble custom boards in our Orem workshop and send them to your store.
+            The hardware, riser pads and box are added for you, based on the deck and wheels.</p>
+        </div>
+      </div>
+
+      <!-- ============ cart ============ -->
+      <div id="tab-cart" hidden>
+        <div class="panel">
+          <h2>Your cart</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Item</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Total</th>
+              <th>At your pickup store</th><th></th></tr></thead>
+            <tbody id="cart-body"></tbody>
+            <tfoot id="cart-foot"></tfoot>
+          </table></div>
+          <div class="inline-form" style="margin-top:14px">
+            <label>Pick up at <select id="c-store"></select></label>
+            <label>Pickup date (optional) <input type="date" id="c-date"></label>
+            <label style="flex:1;min-width:220px">Note (optional) <input id="c-note" maxlength="200"></label>
+          </div>
+          <p class="error-text" id="cart-error" role="alert"></p>
+          <div class="form-actions"><button class="btn primary" id="c-place">Place order for pickup</button></div>
+          <p class="muted">You pay when you pick up. Tax is added at the rate shown.</p>
+        </div>
+      </div>
+
+      <!-- ============ my orders ============ -->
+      <div id="tab-orders" hidden>
+        <div class="panel">
+          <div class="panel-head"><h2>My orders</h2><button class="btn small" id="o-refresh">Refresh</button></div>
+          <div id="orders-list"><p class="muted">Loading…</p></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      if (!WBC.configured) { WBC.showSetupNotice(); return; }
+      const { sb, esc, money, qty, date, dateOf, today, soNumber, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      // ---------------- who is signed in ----------------
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { window.location.replace('index.html'); return; }
+      $('signout-btn').onclick = WBC.signOut;
+      const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+      $('staff-link').hidden = !(profile && profile.role === 'staff');
+
+      // Prices, locations and build rules come from one database function
+      // that never returns a cost.
+      const setupRes = await sb.rpc('portal_setup');
+      if (setupRes.error) {
+        document.querySelector('.portal-main').innerHTML =
+          `<div class="panel"><h2>The shop is not open yet</h2><p>${esc(setupRes.error.message)}</p>
+           <p class="muted">Staff: run sql/14_portal.sql in Supabase.</p></div>`;
+        return;
+      }
+      const setup = setupRes.data;
+      const items = setup.items || [];
+      const itemById = new Map(items.map((i) => [i.id, i]));
+      const locations = setup.locations || [];
+      const stores = locations.filter((l) => l.type === 'store');
+      const warehouse = locations.find((l) => l.type === 'warehouse');
+      const taxRate = Number(setup.tax_rate || 0);
+      const assemblyFee = Number(setup.assembly_fee || 0);
+
+      let customer = null;
+      let stock = new Map();    // "itemId:locationId" -> quantity on hand
+      let cart = new Map();     // item id -> quantity
+      const onHand = (itemId, locationId) => stock.get(itemId + ':' + locationId) || 0;
+
+      async function loadCustomer() {
+        const { data } = await sb.from('customers').select('*').eq('auth_user_id', session.user.id).maybeSingle();
+        customer = data || null;
+        $('who').textContent = customer ? customer.name : session.user.email;
+        $('register-panel').hidden = Boolean(customer);
+        $('shop').hidden = !customer;
+      }
+
+      const storeOptions = (selectedId) => stores.map((s) =>
+        `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+
+      // ---------------- first visit ----------------
+      $('reg-store').innerHTML = storeOptions(null);
+      $('register-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        $('reg-error').textContent = '';
+        const { error } = await sb.rpc('portal_register', {
+          p_name: $('reg-name').value.trim(),
+          p_phone: $('reg-phone').value.trim() || null,
+          p_home_location_id: Number($('reg-store').value) || null,
+        });
+        if (error) { $('reg-error').textContent = error.message; return; }
+        await start();
+      });
+
+      // ---------------- stock (live) ----------------
+      async function loadStock() {
+        const { data, error } = await sb.from('inventory_levels').select('item_id, location_id, qty_on_hand');
+        if (error) { toast(error.message, true); return; }
+        stock = new Map(data.map((l) => [l.item_id + ':' + l.location_id, Number(l.qty_on_hand)]));
+        renderCatalog(); renderCart(); renderBuild();
+      }
+
+      // ---------------- catalog ----------------
+      const CATEGORY = { complete: 'Complete boards', deck: 'Decks', trucks: 'Trucks', wheels: 'Wheels',
+        bearings: 'Bearings', hardware: 'Hardware', grip: 'Grip tape', accessory: 'Accessories', packaging: 'Packaging' };
+
+      function stockCell(itemId, locationId) {
+        const n = onHand(itemId, locationId);
+        return n > 0 ? `<span class="stock-ok">${qty(n)} in stock</span>` : '<span class="stock-none">None</span>';
+      }
+
+      function renderCatalog() {
+        const search = $('search').value.trim().toLowerCase(), category = $('category').value;
+        $('cat-head').innerHTML = `<tr><th>Item</th><th class="num">Price</th>
+          ${stores.map((s) => `<th>${esc(s.name)}</th>`).join('')}
+          <th>${warehouse ? esc(warehouse.name) : ''}</th><th class="num">Qty</th><th></th></tr>`;
+        const list = items.filter((i) => (!category || i.category === category)
+          && (!search || i.name.toLowerCase().includes(search)));
+        $('cat-body').innerHTML = list.map((i) => `<tr data-item="${i.id}">
+          <td><strong>${esc(i.name)}</strong><br><span class="muted">${esc(i.sku)}</span></td>
+          <td class="num">${money(i.price)}</td>
+          ${stores.map((s) => `<td>${stockCell(i.id, s.id)}</td>`).join('')}
+          <td>${warehouse ? stockCell(i.id, warehouse.id) : ''}</td>
+          <td class="num"><input class="qty add-qty" type="number" min="1" max="99" step="1" value="1" aria-label="Quantity of ${esc(i.name)}"></td>
+          <td><button class="btn small add-btn">Add to cart</button></td>
+        </tr>`).join('') || `<tr><td colspan="${5 + stores.length}" class="muted">Nothing matches.</td></tr>`;
+      }
+      $('search').addEventListener('input', renderCatalog);
+      $('category').addEventListener('change', renderCatalog);
+      $('cat-body').addEventListener('click', (event) => {
+        const button = event.target.closest('.add-btn');
+        if (!button) return;
+        const row = button.closest('[data-item]');
+        const id = Number(row.dataset.item);
+        const n = Math.max(1, Math.floor(Number(row.querySelector('.add-qty').value) || 1));
+        cart.set(id, Math.min(99, (cart.get(id) || 0) + n));
+        saveCart(); renderCart();
+        toast(itemById.get(id).name + ' added to your cart.');
+      });
+
+      // ---------------- cart ----------------
+      // The cart is kept in this browser only until the order is placed.
+      const cartKey = 'wbc-cart-' + session.user.id;
+      function saveCart() { try { localStorage.setItem(cartKey, JSON.stringify([...cart])); } catch (e) { /* private window */ } }
+      function loadCart() {
+        try { cart = new Map(JSON.parse(localStorage.getItem(cartKey) || '[]').filter(([id]) => itemById.has(id))); }
+        catch (e) { cart = new Map(); }
+      }
+
+      function renderCart() {
+        const storeId = Number($('c-store').value);
+        const units = [...cart.values()].reduce((sum, n) => sum + n, 0);
+        $('cart-tab').textContent = units ? `Cart (${units})` : 'Cart';
+        let subtotal = 0;
+        $('cart-body').innerHTML = [...cart].map(([id, n]) => {
+          const item = itemById.get(id);
+          subtotal += n * Number(item.price);
+          const here = onHand(id, storeId);
+          const elsewhere = locations.reduce((sum, l) => sum + onHand(id, l.id), 0);
+          const note = here >= n ? '<span class="stock-ok">In stock</span>'
+            : elsewhere >= n ? 'Coming from another location (about a day)'
+            : 'We will order or build it for you';
+          return `<tr data-item="${id}">
+            <td><strong>${esc(item.name)}</strong></td><td class="num">${money(item.price)}</td>
+            <td class="num"><input class="qty cart-qty" type="number" min="1" max="99" step="1" value="${n}" aria-label="Quantity of ${esc(item.name)}"></td>
+            <td class="num">${money(n * Number(item.price))}</td><td>${note}</td>
+            <td><button class="btn small remove-btn">Remove</button></td></tr>`;
+        }).join('') || '<tr><td colspan="6" class="muted">Your cart is empty. Add something from the Shop tab.</td></tr>';
+        const tax = Math.round(subtotal * taxRate * 100) / 100;
+        $('cart-foot').innerHTML = cart.size ? `
+          <tr><td colspan="3">Subtotal</td><td class="num">${money(subtotal)}</td><td colspan="2"></td></tr>
+          <tr><td colspan="3">Sales tax (${(taxRate * 100).toFixed(2)}%)</td><td class="num">${money(tax)}</td><td colspan="2"></td></tr>
+          <tr><td colspan="3">Total to pay at pickup</td><td class="num">${money(subtotal + tax)}</td><td colspan="2"></td></tr>` : '';
+        $('c-place').disabled = !cart.size;
+      }
+      $('c-store').addEventListener('change', renderCart);
+      $('cart-body').addEventListener('change', (event) => {
+        const row = event.target.closest('[data-item]');
+        if (!row || !event.target.classList.contains('cart-qty')) return;
+        cart.set(Number(row.dataset.item), Math.min(99, Math.max(1, Math.floor(Number(event.target.value) || 1))));
+        saveCart(); renderCart();
+      });
+      $('cart-body').addEventListener('click', (event) => {
+        const button = event.target.closest('.remove-btn');
+        if (!button) return;
+        cart.delete(Number(button.closest('[data-item]').dataset.item));
+        saveCart(); renderCart();
+      });
+      $('c-place').addEventListener('click', async () => {
+        $('cart-error').textContent = '';
+        $('c-place').disabled = true;
+        const { data, error } = await sb.rpc('portal_place_order', {
+          p_location_id: Number($('c-store').value),
+          p_lines: [...cart].map(([item_id, n]) => ({ item_id, qty: n })),
+          p_requested_date: $('c-date').value || null,
+          p_note: $('c-note').value.trim() || null,
+        });
+        $('c-place').disabled = false;
+        if (error) { $('cart-error').textContent = error.message; return; }
+        cart = new Map(); saveCart(); $('c-note').value = ''; $('c-date').value = '';
+        renderCart();
+        toast('Order ' + soNumber(data) + ' placed.');
+        showTab('orders');
+      });
+
+      // ---------------- build your own board ----------------
+      const options = setup.build_options || [];
+      const autoAdds = setup.build_auto_adds || [];
+      const SLOTS = ['trucks', 'wheels', 'bearings', 'grip'];
+      const deckIds = [...new Set(options.map((o) => o.deck_item_id))].filter((id) => itemById.has(id));
+
+      // Fill one slot's list with only the parts allowed for the chosen deck.
+      function fillSlot(slot) {
+        const deckId = Number($('b-deck').value);
+        const select = $('b-' + slot);
+        const keep = Number(select.value);
+        const allowed = options.filter((o) => o.deck_item_id === deckId && o.slot === slot)
+          .map((o) => itemById.get(o.item_id)).filter(Boolean);
+        select.innerHTML = allowed.map((i) =>
+          `<option value="${i.id}" ${i.id === keep ? 'selected' : ''}>${esc(i.name)} · ${money(i.price)}</option>`).join('');
+      }
+
+      function buildParts() {
+        const deckId = Number($('b-deck').value), wheelId = Number($('b-wheels').value);
+        const chosen = [['Deck', deckId], ['Trucks', Number($('b-trucks').value)], ['Wheels', wheelId],
+          ['Bearings', Number($('b-bearings').value)], ['Grip tape', Number($('b-grip').value)]]
+          .map(([why, id]) => ({ why: 'Your choice: ' + why.toLowerCase(), item: itemById.get(id) }));
+        const extras = autoAdds.filter((a) => a.deck_item_id === deckId && a.wheel_item_id === wheelId)
+          .map((a) => ({ why: 'Added automatically for this deck and wheels', item: itemById.get(a.item_id) }));
+        return chosen.concat(extras).filter((p) => p.item);
+      }
+
+      function renderBuild() {
+        if (!deckIds.length) { $('b-body').innerHTML = '<tr><td colspan="4" class="muted">Custom builds are not available.</td></tr>'; return; }
+        const parts = buildParts();
+        const total = parts.reduce((sum, p) => sum + Number(p.item.price), 0);
+        $('b-body').innerHTML = parts.map((p) => `<tr>
+          <td>${esc(p.item.name)}</td><td class="muted">${esc(p.why)}</td>
+          <td>${warehouse ? stockCell(p.item.id, warehouse.id) : ''}</td>
+          <td class="num">${money(p.item.price)}</td></tr>`).join('');
+        const tax = Math.round((total + assemblyFee) * taxRate * 100) / 100;
+        $('b-foot').innerHTML = `
+          <tr><td colspan="3">Parts</td><td class="num">${money(total)}</td></tr>
+          <tr><td colspan="3">Assembly fee</td><td class="num">${money(assemblyFee)}</td></tr>
+          <tr><td colspan="3">Your custom board</td><td class="num">${money(total + assemblyFee)}</td></tr>
+          <tr><td colspan="3">Sales tax (${(taxRate * 100).toFixed(2)}%)</td><td class="num">${money(tax)}</td></tr>
+          <tr><td colspan="3">Total to pay at pickup</td><td class="num">${money(total + assemblyFee + tax)}</td></tr>`;
+      }
+
+      $('b-deck').addEventListener('change', () => { SLOTS.forEach(fillSlot); renderBuild(); });
+      SLOTS.forEach((slot) => $('b-' + slot).addEventListener('change', renderBuild));
+      $('b-order').addEventListener('click', async () => {
+        $('b-error').textContent = '';
+        $('b-order').disabled = true;
+        const { data, error } = await sb.rpc('portal_place_custom_order', {
+          p_location_id: Number($('b-store').value),
+          p_deck_id: Number($('b-deck').value),
+          p_trucks_id: Number($('b-trucks').value),
+          p_wheels_id: Number($('b-wheels').value),
+          p_bearings_id: Number($('b-bearings').value),
+          p_grip_id: Number($('b-grip').value),
+          p_note: null,
+        });
+        $('b-order').disabled = false;
+        if (error) { $('b-error').textContent = error.message; return; }
+        toast('Custom board ordered: ' + soNumber(data) + '.');
+        showTab('orders');
+      });
+
+      // ---------------- my orders ----------------
+      // What a customer sees for each staff status.
+      function orderStatus(o) {
+        if (o.status === 'cancelled') return ['Cancelled', 'cancelled'];
+        if (o.status === 'fulfilled' || o.status === 'closed') return ['Picked up', 'closed'];
+        const lines = o.order_lines || [];
+        const waiting = lines.filter((l) => Number(l.qty) > Number(l.qty_fulfilled));
+        if (waiting.length && waiting.every((l) => l.availability === 'ready')) return ['Ready for pickup', 'received'];
+        return ['Being prepared', 'sent'];
+      }
+      const BUILD = { planned: 'waiting to be built', in_progress: 'being built now', completed: 'built', cancelled: 'cancelled' };
+
+      async function loadOrders() {
+        const { data, error } = await sb.rpc('portal_my_orders');
+        if (error) { $('orders-list').innerHTML = `<p class="error-text">${esc(error.message)}</p>`; return; }
+        $('orders-list').innerHTML = data.map((o) => {
+          const [label, tone] = orderStatus(o);
+          const lines = o.order_lines || [];
+          const open = o.status === 'placed';
+          const canCancel = open && lines.every((l) => Number(l.qty_fulfilled) === 0
+            && (!l.build_status || l.build_status === 'planned'));
+          return `<div class="order-card">
+            <h3>${esc(soNumber(o.order_id))} <span class="status ${tone}">${esc(label)}</span></h3>
+            <p class="muted" style="margin:0 0 8px">Ordered ${esc(dateOf(o.order_date))} · pick up at ${esc(o.location_name)}
+              ${o.requested_date ? ' · wanted ' + esc(date(o.requested_date)) : ''}</p>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th>Status</th></tr></thead>
+              <tbody>${lines.map((l) => {
+                const waiting = Number(l.qty) > Number(l.qty_fulfilled);
+                const state = !open ? '' : !waiting ? 'Picked up'
+                  : l.availability === 'ready' ? '<span class="stock-ok">Ready at the store</span>'
+                  : 'Expected ' + esc(date(l.est_available_date));
+                return `<tr><td><strong>${esc(l.name)}</strong>
+                    ${l.build_parts ? `<br><span class="muted">${esc(l.build_parts)}</span>` : ''}
+                    ${l.build_status && open ? `<br><span class="muted">Workshop: ${esc(BUILD[l.build_status] || l.build_status)}</span>` : ''}</td>
+                  <td class="num">${qty(l.qty)}</td><td class="num">${money(l.unit_price)}</td>
+                  <td class="num">${money(l.line_net)}</td><td>${state}</td></tr>`;
+              }).join('')}</tbody>
+              <tfoot><tr><td colspan="3">Total with tax (${money(o.tax)})</td><td class="num">${money(o.total)}</td><td></td></tr></tfoot>
+            </table></div>
+            ${canCancel ? `<div class="form-actions"><button class="btn small" data-cancel="${o.order_id}">Cancel this order</button></div>` : ''}
+          </div>`;
+        }).join('') || '<p class="muted">You have not ordered anything yet.</p>';
+      }
+      $('o-refresh').addEventListener('click', loadOrders);
+      $('orders-list').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-cancel]');
+        if (!button) return;
+        const id = Number(button.dataset.cancel);
+        if (!window.confirm('Cancel ' + soNumber(id) + '?')) return;
+        const { error } = await sb.rpc('portal_cancel_order', { p_order_id: id });
+        if (error) { toast(error.message, true); return; }
+        toast(soNumber(id) + ' cancelled.');
+        await loadOrders();
+      });
+
+      // ---------------- tabs ----------------
+      let currentTab = 'catalog';
+      function showTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tabs button').forEach((b) =>
+          b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+        ['catalog', 'build', 'cart', 'orders'].forEach((t) => { $('tab-' + t).hidden = t !== name; });
+        if (name === 'orders') loadOrders();
+      }
+      document.querySelector('.tabs').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-tab]');
+        if (button) showTab(button.dataset.tab);
+      });
+
+      // ---------------- start ----------------
+      async function start() {
+        await loadCustomer();
+        if (!customer) return;
+        const home = customer.home_location_id;
+        $('c-store').innerHTML = storeOptions(home);
+        $('b-store').innerHTML = storeOptions(home);
+        $('c-date').min = today();
+        $('category').innerHTML = '<option value="">Everything</option>' +
+          [...new Set(items.map((i) => i.category))].map((c) => `<option value="${esc(c)}">${esc(CATEGORY[c] || c)}</option>`).join('');
+        $('b-deck').innerHTML = deckIds.map((id) => itemById.get(id)).map((i) =>
+          `<option value="${i.id}">${esc(i.name)} · ${money(i.price)}</option>`).join('');
+        SLOTS.forEach(fillSlot);
+        loadCart();
+        await loadStock();
+
+        // Realtime: stock changes made by staff or other customers show up here.
+        let reloadTimer;
+        sb.channel('portal-page')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, () => {
+            clearTimeout(reloadTimer);
+            reloadTimer = setTimeout(() => {
+              const active = document.activeElement;
+              if (active && active.matches('input, select')) return;   // do not redraw while typing
+              loadStock();
+              if (currentTab === 'orders') loadOrders();
+            }, 800);
+          })
+          .subscribe();
+      }
+      await start();
+    })();
+  </script>
+</body>
+</html>

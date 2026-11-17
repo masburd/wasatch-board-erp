@@ -19,7 +19,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 9 (planning) done and live:** `sql/11` run, confirmed by the user on 2026-11-16.
 - **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
 - **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
-- **Next to build:** step 11, customer portal and configurator.
+- **Step 11 (customer portal and Build Your Own Board) built and committed, not yet live or confirmed:** `sql/14_portal.sql`, `portal.html`, `signup.html`; `sql/11` and `sql/13` were edited (new `planned_job_parts` view) and must be re-run before `sql/14`. Pages tested locally with the fake database only; the SQL has never been run. The user must also turn off "Confirm email" in Supabase Auth to sign up demo customers with made-up emails.
+- **Next to build:** step 12, barcode labels, About page polish, demo rehearsal.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -35,9 +36,10 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
 | 9 | `sql/09_production.sql` | Yes |
 | 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
-| 11 | `sql/11_planning.sql` | Yes |
+| 11 | `sql/11_planning.sql` | Yes, but **edited in step 11: must be re-run** (not confirmed) |
 | 12 | `sql/12_financials_reports.sql` | Yes |
-| 13 | `sql/13_mrp_weekly.sql` | Yes |
+| 13 | `sql/13_mrp_weekly.sql` | Yes, but **edited in step 11: must be re-run after 11** (not confirmed) |
+| 14 | `sql/14_portal.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -50,7 +52,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Transfers are immediate (no in-transit state).
 - Return reason "Damaged in transit" is set to not restock, like "Defective".
 - Review interval defaults to 30 days per item.
-- Master data is staff-only for now; customer-facing read access is added with the portal (step 11), using views that hide cost.
+- Master data is staff-only. Customers never read tables directly (except `inventory_levels`, which any signed-in user may read so stock is live): the portal uses `security definer` functions named `portal_*` that return no cost columns and only the caller's own orders.
 - `sql/05` starter stock is temporary; `sql/10` erases it and posts real opening balances.
 - PO statuses: draft → sent ("Order Sent") → received → closed, or cancelled. A PO becomes received when every line is complete or the user ticks "close short"; marking it paid closes it. A PO has no location; the location is chosen on each receipt.
 - Business dates use Mountain time via `wbc_today()`. Backdated receipts post their ledger row at noon on that date.
@@ -81,6 +83,11 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - `pnl(from, to, 'total' | 'month')` is the P&L: revenue − refunds = net sales; − (COGS sold − COGS returned) = gross profit; − production scrap − return write-offs − stock adjustments = profit. Sales count on the hand-over date (`fulfilled_at`, else `order_date`). Tax collected is shown but is not revenue. There are no operating expenses in the system.
 - `inventory_turnover(from, to)` = COGS ÷ the average of each day's closing stock value, where a day's value is the running sum of ledger `qty_change × unit_cost`. That ledger value can differ from `inventory_value` (qty × current average cost) by a few dollars of rounding, so the page shows only the average.
 - Valuation uses `inventory_value_detail` and `inventory_value_by_location`. `low_stock_report` adds `order_by_date` (the day stock + on order reaches the reorder point) to `item_planning`.
+- Portal flow: `signup.html` creates the login (trigger gives it a `customer` profile) → `portal.html` asks for name and home store → `portal_register` creates a `customers` row (`P-001`…) linked by `auth_user_id`. Sign-ups are never linked to the seeded customers, because an unconfirmed email proves nothing. `index.html` sends staff to the dashboard and everyone else to the portal.
+- `portal_setup()` returns tax rate, assembly fee, locations, sellable items with prices, and the build rules in one JSON answer. `portal_place_order` creates a `portal` sales order as `placed` (no stock moves; staff fulfil it on Sales Orders). `portal_my_orders` and `portal_cancel_order` cover the customer's own orders.
+- Custom build: `portal_place_custom_order` checks each choice against `build_options`, adds `build_auto_adds`, prices it at parts + `assembly_fee`, creates a sales order line for `WBC-3000` and a planned production order (qty 1) with its own component rows, `sales_order_line_id` and `destination_location_id` = pickup store. Staff issue and complete it on Production; completion receives the board at the store; staff then fulfil the sales order there.
+- `planned_job_parts` view (in `sql/11`) gives the parts planned production orders will take: component rows if the order has them (custom), otherwise BOM × quantity. Both MRP functions use it, so custom builds count as direct component demand.
+- The portal cart lives in the browser's localStorage until the order is placed. Customers get realtime only on `inventory_levels`; "My orders" refreshes on open, on the Refresh button and when stock changes.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 

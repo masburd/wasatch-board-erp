@@ -261,7 +261,8 @@ const WBC = (() => {
         <main class="center-card">
           <h1>Staff access needed</h1>
           <p>You are signed in as <strong>${esc(session.user.email)}</strong>, but this login is not marked as staff.</p>
-          <p>${error ? esc(error.message) : 'Run <code>sql/03_make_me_staff.sql</code> in Supabase for this email, then reload.'}</p>
+          <p>${error ? esc(error.message) : 'Staff: run <code>sql/03_make_me_staff.sql</code> in Supabase for this email, then reload.'}</p>
+          <p>Customers: <a href="portal.html">go to the shop</a>.</p>
           <button id="signout-btn" class="btn">Sign out</button>
         </main>`;
       document.getElementById('signout-btn').onclick = signOut;

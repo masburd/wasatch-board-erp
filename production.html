@@ -363,7 +363,8 @@
           done ? fact('Scrapped', qty(o.qty_scrapped)) : '',
           done ? fact('Final yield', percent(o.final_yield, 0)) : '',
           done ? fact('First-pass yield', percent(o.first_pass_yield, 0)) : '',
-          issued ? fact('Parts cost', money(o.component_cost)) : fact('Expected cost', money(o.planned_cost)),
+          issued ? fact('Parts cost', money(o.component_cost))
+                 : Number(o.planned_cost) > 0 ? fact('Expected cost', money(o.planned_cost)) : '',
           issued ? fact('Cost per board', money(o.unit_cost)) : '',
           done ? fact('Into stock', money(o.good_value)) : '',
           done ? fact('Scrap cost', money(o.scrap_cost)) : '',
@@ -383,7 +384,15 @@
           $('d-foot').innerHTML = `<tr><td colspan="4">Parts cost · ${money(o.unit_cost)} per board started</td>
             <td class="num">${money(o.component_cost)}</td></tr>`;
         } else {
-          const parts = partsNeeded(o.item_id, Number(o.qty_started));
+          // A custom build arrives with its own parts list; a standard board uses its BOM.
+          const parts = detailComponents.length
+            ? detailComponents.map((c) => {
+                const part = itemById.get(c.item_id) || {};
+                const needed = Number(c.qty_issued), have = onHand.get(c.item_id) || 0;
+                return { sku: part.sku, name: part.name, perBoard: needed / Number(o.qty_started), needed, have,
+                  short: Math.max(0, needed - have), unitCost: Number(part.avg_cost || 0), cost: needed * Number(part.avg_cost || 0) };
+              })
+            : partsNeeded(o.item_id, Number(o.qty_started));
           $('d-head').innerHTML = `<tr><th>SKU</th><th>Part</th><th class="num">Per board</th><th class="num">Needed</th>
             <th class="num">On hand at warehouse</th><th>Enough?</th><th class="num">Average cost</th><th class="num">Cost</th></tr>`;
           $('d-body').innerHTML = partsRows(parts);

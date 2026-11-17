@@ -93,11 +93,7 @@ as $$
     group by item_id
   ),
   mo_parts as (
-    select b.component_item_id as item_id, sum(o.qty_started * b.qty) as qty
-    from production_orders o
-    join bom_lines b on b.parent_item_id = o.item_id
-    where o.status = 'planned'
-    group by b.component_item_id
+    select item_id, qty from planned_job_parts
   ),
 
   -- ============ level 1: boards ============

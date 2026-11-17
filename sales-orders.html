@@ -127,7 +127,8 @@
       let detailLines = [];
       let cart = [];           // new order: [{ item, qty }]
 
-      const itemById = () => new Map(items.map((i) => [i.id, i]));
+      let allItems = [];   // includes the Custom Board item, which is only ordered through the portal
+      const itemById = () => new Map(allItems.map((i) => [i.id, i]));
       const locCode = (id) => (locations.find((l) => l.id === id) || {}).code || '';
       const onHand = (itemId, locationId) => Number(levels.get(itemId + ':' + locationId) || 0);
       const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -135,15 +136,15 @@
       // ---------------- loading ----------------
       async function loadMaster() {
         const [itemRes, custRes, locRes, taxRes] = await Promise.all([
-          sb.from('items').select('id, sku, barcode, name, price, item_type')
-            .in('item_type', ['part', 'complete']).eq('is_active', true).order('sku'),
+          sb.from('items').select('id, sku, barcode, name, price, item_type').eq('is_active', true).order('sku'),
           sb.from('customers').select('*').order('customer_no'),
           sb.from('locations').select('*').order('id'),
           sb.from('settings').select('value').eq('key', 'tax_rate').maybeSingle(),
         ]);
         const error = itemRes.error || custRes.error || locRes.error || taxRes.error;
         if (error) { toast(error.message, true); return false; }
-        items = itemRes.data.filter((i) => i.price !== null);
+        allItems = itemRes.data;
+        items = allItems.filter((i) => i.price !== null && i.item_type !== 'custom');
         customers = custRes.data.filter((c) => c.customer_type !== 'walk_in');
         locations = locRes.data;
         taxRate = Number(taxRes.data ? taxRes.data.value : 0);

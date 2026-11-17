@@ -20,7 +20,23 @@
         </tr></thead>
         <tbody id="sup-body"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
       </table></div>
-      <p class="muted">Quoted lead time sets the expected receipt date on each purchase order. The scorecard that compares these promises with actual deliveries arrives in build step 9.</p>
+      <p class="muted">Quoted lead time sets the expected receipt date on each purchase order. The scorecard below compares these promises with actual deliveries.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Supplier scorecard</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Supplier</th><th class="num">POs received</th><th class="num">On-time rate</th>
+          <th class="num">Quoted lead time</th><th class="num">Actual lead time</th><th class="num">Average days late</th>
+          <th class="num">Fill rate</th><th class="num">Bought</th><th class="num">Owed now</th>
+          <th class="num">Score</th><th>Grade</th><th>Recommendation</th>
+        </tr></thead>
+        <tbody id="score-body"><tr><td colspan="12" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Calculated from every received purchase order. Score = 40% on-time rate + 40% fill score
+        (each 1% short costs 4 points of fill score) + 20% lead-time score (how far the actual lead time runs over the quote).
+        Grade: A 90+, B 80+, C 70+, D 60+, F below 60. A = Keep, B or C = Watch, D or F = Replace.</p>
     </div>
   </div>
 
@@ -50,7 +66,7 @@
     (async () => {
       const me = await WBC.initPage('Suppliers');
       if (!me) return;
-      const { sb, esc, toast } = WBC;
+      const { sb, esc, money, percent, toast } = WBC;
       const $ = (id) => document.getElementById(id);
 
       let suppliers = [];
@@ -68,6 +84,39 @@
         itemCounts = new Map();
         itemRes.data.forEach((i) => itemCounts.set(i.supplier_id, (itemCounts.get(i.supplier_id) || 0) + 1));
         render();
+        await loadScorecard();
+      }
+
+      // The scorecard is a database view over received purchase orders.
+      async function loadScorecard() {
+        const { data, error } = await sb.from('supplier_scorecard').select('*').order('name');
+        if (error) {
+          $('score-body').innerHTML = '<tr><td colspan="12" class="muted">Run sql/11_planning.sql to see the scorecard.</td></tr>';
+          return;
+        }
+        const tone = { Keep: 'ok-text', Watch: '', Replace: 'bad-text' };
+        const days = (value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 });
+        $('score-body').innerHTML = data.map((s) => {
+          if (!Number(s.pos_received)) {
+            return `<tr class="${s.is_active ? '' : 'inactive'}"><td><strong>${esc(s.name)}</strong></td>
+              <td class="num">0</td><td colspan="10" class="muted">No received purchase orders yet.</td></tr>`;
+          }
+          const late = Number(s.avg_days_late);
+          return `<tr class="${s.is_active ? '' : 'inactive'}">
+            <td><strong>${esc(s.name)}</strong></td>
+            <td class="num">${esc(s.pos_received)}</td>
+            <td class="num">${percent(s.on_time_rate, 0)}</td>
+            <td class="num">${esc(s.quoted_lead_time_days)} d</td>
+            <td class="num">${days(s.avg_actual_lead)} d</td>
+            <td class="num">${late > 0.05 ? `<span class="bad-text">${days(late)}</span>` : days(late)}</td>
+            <td class="num">${percent(s.fill_rate, 1)}</td>
+            <td class="num">${money(s.received_value)}</td>
+            <td class="num">${Number(s.payables) > 0 ? money(s.payables) : '—'}</td>
+            <td class="num">${esc(s.score)}</td>
+            <td><strong>${esc(s.grade)}</strong></td>
+            <td><span class="${tone[s.recommendation] || ''}"><strong>${esc(s.recommendation)}</strong></span></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="12" class="muted">No suppliers yet.</td></tr>';
       }
 
       function render() {
@@ -168,6 +217,10 @@
       let reloadTimer;
       sb.channel('suppliers-page')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(load, 300);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => {
           clearTimeout(reloadTimer);
           reloadTimer = setTimeout(load, 300);
         })

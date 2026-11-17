@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MRP · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Material requirements planning</h2>
+        <div class="inline-form">
+          <label>Plan for the next <input class="qty" id="horizon" type="number" min="1" max="365" step="1"> days</label>
+          <button class="btn" id="run-btn">Recalculate</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:0">Step 1 works out how many boards to build. Step 2 turns those boards into parts
+        through the bill of materials and works out what to buy. Nothing here is typed in: it is recalculated from sales,
+        stock, open orders and the BOM every time the page loads.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Step 1 · Boards to build</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>SKU</th><th>Board</th><th class="num">Sold per day</th><th class="num">Forecast</th>
+          <th class="num">+ Open sales orders</th><th class="num">= Gross need</th>
+          <th class="num">− On hand</th><th class="num">− Open production</th>
+          <th class="num">= Net to build</th><th class="num">Build qty</th><th></th>
+        </tr></thead>
+        <tbody id="parent-body"><tr><td colspan="11" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Forecast = boards sold per day × the planning days. On hand counts all three locations.
+        Open production = planned and in-progress production orders.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Step 2 · Parts to buy</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th><input type="checkbox" id="tick-all" aria-label="Tick every part that needs ordering"></th>
+          <th>SKU</th><th>Part</th><th>Supplier</th>
+          <th class="num">For boards to build</th><th class="num">+ For planned jobs</th>
+          <th class="num">+ Part sales forecast</th><th class="num">+ Open sales orders</th><th class="num">= Gross need</th>
+          <th class="num">− On hand</th><th class="num">− On order</th><th class="num">= Net need</th>
+          <th class="num">EOQ</th><th class="num">Order qty</th><th>Arrives about</th>
+        </tr></thead>
+        <tbody id="part-body"><tr><td colspan="15" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="error-text" id="part-error" role="alert"></p>
+      <div class="form-actions">
+        <button class="btn primary" id="po-btn">Create draft POs for ticked parts</button>
+      </div>
+      <p class="muted">For boards to build = net boards from step 1 × the BOM quantity. For planned jobs = parts that
+        planned production orders will take when they are issued. On order = still coming on sent purchase orders.
+        Suggested order quantity = the larger of the net need and the EOQ.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('MRP');
+      if (!me) return;
+      const { sb, esc, qty, date, today, poNumber, moNumber, toast, createDraftPOs } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      let parents = [];          // rows from mrp_parents()
+      let parts = [];            // rows from mrp_components()
+      let supplierName = new Map();
+      let ticked = new Set();    // part ids ticked for ordering
+      let orderQty = new Map();  // part id -> quantity typed by the user
+
+      const num = (value, digits = 0) => Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: digits });
+      const zero = (value) => (Number(value) ? qty(value) : '<span class="muted">0</span>');
+
+      function addDays(isoDate, days) {
+        const d = new Date(isoDate + 'T00:00:00');
+        d.setDate(d.getDate() + Number(days));
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      }
+
+      async function load() {
+        const days = Math.max(1, Math.floor(Number($('horizon').value) || 30));
+        $('horizon').value = days;
+        const [parentRes, partRes] = await Promise.all([
+          sb.rpc('mrp_parents', { p_days: days }),
+          sb.rpc('mrp_components', { p_days: days }),
+        ]);
+        const error = parentRes.error || partRes.error;
+        if (error) {
+          toast(error.message + ' — has sql/11_planning.sql been run?', true);
+          return;
+        }
+        parents = parentRes.data;
+        parts = partRes.data;
+        render();
+      }
+
+      function render() {
+        $('parent-body').innerHTML = parents.map((p) => `<tr data-item="${p.item_id}">
+          <td class="nowrap">${esc(p.sku)}</td><td>${esc(p.name)}</td>
+          <td class="num">${num(p.avg_daily_sales, 2)}</td>
+          <td class="num">${qty(p.forecast)}</td>
+          <td class="num">${zero(p.open_orders)}</td>
+          <td class="num">${qty(p.gross)}</td>
+          <td class="num">${qty(p.on_hand)}</td>
+          <td class="num">${zero(p.open_production)}</td>
+          <td class="num">${Number(p.net) > 0 ? `<strong class="bad-text">${qty(p.net)}</strong>` : '<span class="ok-text">0</span>'}</td>
+          <td class="num"><input class="qty build-qty" type="number" min="0" step="1" value="${Number(p.net) > 0 ? esc(p.net) : ''}" placeholder="0" aria-label="Build quantity for ${esc(p.sku)}"></td>
+          <td><button class="btn small build-btn">Create production order</button></td>
+        </tr>`).join('') || '<tr><td colspan="11" class="muted">No complete boards.</td></tr>';
+
+        $('part-body').innerHTML = parts.map((p) => {
+          const needed = Number(p.net) > 0;
+          const amount = orderQty.has(p.item_id) ? orderQty.get(p.item_id) : (needed ? p.suggested_order : '');
+          return `<tr data-item="${p.item_id}">
+            <td><input type="checkbox" class="tick" ${ticked.has(p.item_id) ? 'checked' : ''} aria-label="Tick ${esc(p.sku)}"></td>
+            <td class="nowrap">${esc(p.sku)}</td><td>${esc(p.name)}</td>
+            <td>${esc(supplierName.get(p.supplier_id) || '')}</td>
+            <td class="num">${zero(p.for_builds)}</td>
+            <td class="num">${zero(p.for_planned)}</td>
+            <td class="num">${zero(p.forecast)}</td>
+            <td class="num">${zero(p.open_orders)}</td>
+            <td class="num">${qty(p.gross)}</td>
+            <td class="num">${qty(p.on_hand)}</td>
+            <td class="num">${zero(p.on_order)}</td>
+            <td class="num">${needed ? `<strong class="bad-text">${qty(p.net)}</strong>` : '<span class="ok-text">0</span>'}</td>
+            <td class="num">${p.eoq === null ? '—' : num(p.eoq)}</td>
+            <td class="num"><input class="qty order-qty" type="number" min="0" step="1" value="${esc(amount)}" placeholder="0" aria-label="Order quantity for ${esc(p.sku)}"></td>
+            <td class="nowrap">${needed ? esc(date(addDays(today(), p.lead_time_days))) + ` <span class="muted">(${esc(p.lead_time_days)} d)</span>` : '—'}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="15" class="muted">No parts.</td></tr>';
+      }
+
+      $('run-btn').addEventListener('click', load);
+      $('horizon').addEventListener('change', load);
+
+      // ---- step 1: create a production order for a board ----
+      $('parent-body').addEventListener('click', async (event) => {
+        const button = event.target.closest('.build-btn');
+        if (!button) return;
+        const row = button.closest('[data-item]');
+        const n = Number(row.querySelector('.build-qty').value);
+        if (!(n > 0) || n !== Math.floor(n)) { toast('Enter a whole build quantity above zero.', true); return; }
+        button.disabled = true;
+        const { data, error } = await sb.rpc('create_production_order', {
+          p_item_id: Number(row.dataset.item), p_qty: n, p_note: 'Created from MRP',
+        });
+        button.disabled = false;
+        if (error) { toast(error.message, true); return; }
+        toast(moNumber(data) + ' planned. Its parts now show under "For planned jobs".');
+        await load();
+      });
+
+      // ---- step 2: draft purchase orders for parts ----
+      $('tick-all').addEventListener('change', () => {
+        ticked = new Set($('tick-all').checked ? parts.filter((p) => Number(p.net) > 0).map((p) => p.item_id) : []);
+        render();
+      });
+      $('part-body').addEventListener('change', (event) => {
+        const row = event.target.closest('[data-item]');
+        if (!row || !event.target.classList.contains('tick')) return;
+        const id = Number(row.dataset.item);
+        if (event.target.checked) ticked.add(id); else ticked.delete(id);
+      });
+      $('part-body').addEventListener('input', (event) => {
+        const row = event.target.closest('[data-item]');
+        if (row && event.target.classList.contains('order-qty')) {
+          orderQty.set(Number(row.dataset.item), event.target.value);
+          ticked.add(Number(row.dataset.item));       // typing a quantity ticks the row
+          row.querySelector('.tick').checked = true;
+        }
+      });
+
+      $('po-btn').addEventListener('click', async () => {
+        $('part-error').textContent = '';
+        const lines = parts.filter((p) => ticked.has(p.item_id)).map((p) => ({
+          supplier_id: p.supplier_id, item_id: p.item_id, unit_cost: Number(p.unit_cost || 0),
+          qty: Number(orderQty.has(p.item_id) ? orderQty.get(p.item_id) : (Number(p.net) > 0 ? p.suggested_order : 0)),
+        })).filter((l) => l.qty > 0);
+        if (!lines.length) { $('part-error').textContent = 'Tick at least one part and give it an order quantity.'; return; }
+
+        $('po-btn').disabled = true;
+        const { created, error } = await createDraftPOs(lines);
+        $('po-btn').disabled = false;
+        if (error) $('part-error').textContent = error.message;
+        if (created.length) {
+          toast('Draft ' + created.map(poNumber).join(', ') + ' created. They count as "on order" once sent from Purchasing.');
+          ticked = new Set(); orderQty = new Map();
+        }
+        await load();
+      });
+
+      // ---- start ----
+      const [setRes, supRes] = await Promise.all([
+        sb.from('settings').select('value').eq('key', 'mrp_horizon_days').maybeSingle(),
+        sb.from('suppliers').select('id, name'),
+      ]);
+      $('horizon').value = setRes.data ? Number(setRes.data.value) : 30;
+      supplierName = new Map((supRes.data || []).map((s) => [s.id, s.name]));
+      await load();
+
+      // Realtime: sales orders, production orders, purchase orders and stock
+      // all change the plan. (Skipped while someone is typing a quantity.)
+      let reloadTimer;
+      const queueReload = () => {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          const active = document.activeElement;
+          if (active && active.matches('input.qty')) queueReload(); else load();
+        }, 800);
+      };
+      sb.channel('mrp-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_levels' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'production_orders' }, queueReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bom_lines' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

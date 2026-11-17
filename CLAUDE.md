@@ -15,8 +15,9 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - All code through step 6 is committed and pushed (last code commit "Step 6: sales orders and returns"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
 - **Step 7 (production orders and metrics) done and live:** `sql/09` run, test confirmed by the user on 2026-11-16.
-- **Step 8 (history generator) written and committed, not yet run:** `sql/10_history.sql` could not be tested here at all (no local Postgres), so expect a possible error on first run; ask the user to paste it. It erases every transaction and rebuilds 16 Nov 2025 → yesterday.
-- **Next to build:** step 9, planning (ROP, EOQ, Due for Review, MRP, supplier scorecard, editable Settings page).
+- **Step 8 (history generator) done:** `sql/10_history.sql` run and confirmed by the user on 2026-11-16. Re-running it erases and rebuilds all transactions.
+- **Step 9 (planning) built and committed, not yet live or confirmed:** `sql/11_planning.sql`, `review.html`, `mrp.html`, `settings.html`, scorecard panel on `suppliers.html`. The user still has to run `sql/11`, push, and try it (PLAN.md → "Open issues / to-do"). Pages tested locally with the fake database only; the SQL has never been run.
+- **Next to build:** step 10, financials and reports.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -31,7 +32,8 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 7 | `sql/07_sales_pos.sql` | Yes |
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
 | 9 | `sql/09_production.sql` | Yes |
-| 10 | `sql/10_history.sql` | **Not confirmed** — ask the user. Erases and rebuilds all transactions each time it is run. |
+| 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
+| 11 | `sql/11_planning.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -64,6 +66,12 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - History generator: `wbc_generate_history(seed)` (SQL Editor only) truncates all transaction tables, resets `avg_cost` to `standard_cost`, posts opening balances dated 2025-11-16, then replays each day: PO receipts, returns, monthly count adjustments, production, business sales orders, store restock transfers (Mon/Thu), purchasing, till sales. It inserts document rows directly and calls `wbc_post_movement` for every stock change (it cannot use the browser functions because they need a staff login). It ends with one planned production order and two placed sales orders (one a backorder) so the screens have open work.
 - The generator's demand model (base rates, seasonal factors, events, supplier behaviour) lives only inside `sql/10`. Step 9 must compute usage, ROP, EOQ and the scorecard from the stored transactions, never from that model.
 - PO prices in history drift −3% to +5% around `standard_cost`, so `avg_cost` differs from `standard_cost` after the history is built.
+- Planning is all views and functions, no new tables. `item_usage_stats` (d, σ, daily sales, annual usage from `sale` + `production_issue` ledger rows over the `usage_window_days` setting) → `item_planning` (on hand, on order, safety stock, reorder point, EOQ, `needs_reorder`, `review_due`). A board's lead time is treated as 1 day and its "on order" is open production.
+- MRP is two functions with a horizon in days: `mrp_parents(p_days)` (forecast + open sales orders − on hand − open production) and `mrp_components(p_days)` (net boards × BOM + parts for planned jobs + part sales forecast + open orders − on hand − open PO quantity). Single bucket, no safety stock, no time phasing. Draft POs do not count as on order until sent.
+- `supplier_scorecard` view: score = 40% on-time rate + 40% fill score (1 − 4 × shortfall) + 20% lead-time score; A = Keep, B/C = Watch, D/F = Replace. The weights are in the view, not in settings.
+- Two settings were added: `usage_window_days` (90) and `mrp_horizon_days` (30). Settings are edited on `settings.html` with a direct table update (staff only).
+- "Mark reviewed" is a direct update of `items.last_reviewed_at` from the page. The history generator leaves every item "never reviewed".
+- `WBC.createDraftPOs(lines)` makes one draft PO per supplier; used by Due for Review and MRP.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 

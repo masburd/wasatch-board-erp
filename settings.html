@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <h2>Settings used in calculations</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Setting</th><th class="num">Value</th><th>Unit</th><th>Where it is used</th><th></th></tr></thead>
+        <tbody id="settings-body"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <p class="muted">Change a value and click Save. Every screen that uses it recalculates the next time it loads:
+        nothing is stored as a result, only the setting itself.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Settings');
+      if (!me) return;
+      const { sb, esc, toast } = WBC;
+
+      // Plain-language note for each setting.
+      const USED = {
+        ordering_cost: 'EOQ: the S in √(2DS / H).',
+        holding_rate: 'EOQ: H = this rate × the item\'s unit cost.',
+        service_level_z: 'Safety stock and reorder point: z × σ × √L. 1.65 = 95% service level.',
+        tax_rate: 'Copied onto each new sale. Old sales keep the rate they were made with.',
+        assembly_fee: 'Added to the price of a Build Your Own Board order.',
+        usage_window_days: 'How many recent days are averaged for daily usage (d) and its standard deviation (σ).',
+        mrp_horizon_days: 'The default number of days ahead that MRP plans for.',
+      };
+
+      let settings = [];
+
+      async function load() {
+        const { data, error } = await sb.from('settings').select('*').order('label');
+        if (error) { toast(error.message, true); return; }
+        settings = data;
+        document.getElementById('settings-body').innerHTML = settings.map((s) => `
+          <tr data-key="${esc(s.key)}">
+            <td>${esc(s.label)}</td>
+            <td class="num"><input class="qty" type="number" step="any" min="0" value="${esc(s.value)}" aria-label="${esc(s.label)}"></td>
+            <td class="muted">${esc(s.unit)}</td>
+            <td class="muted">${esc(USED[s.key] || '')}</td>
+            <td><button class="btn small">Save</button></td>
+          </tr>`).join('');
+      }
+
+      document.getElementById('settings-body').addEventListener('click', async (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const row = button.closest('[data-key]');
+        const setting = settings.find((s) => s.key === row.dataset.key);
+        const raw = row.querySelector('input').value;
+        const value = Number(raw);
+        if (raw === '' || !isFinite(value) || value < 0) { toast('Enter a number of zero or more.', true); return; }
+
+        button.disabled = true;
+        const { error } = await sb.from('settings').update({ value }).eq('key', setting.key);
+        button.disabled = false;
+        if (error) { toast(error.message, true); return; }
+        toast(setting.label + ' saved.');
+        await load();
+      });
+
+      await load();
+    })();
+  </script>
+</body>
+</html>

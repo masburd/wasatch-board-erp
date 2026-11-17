@@ -131,9 +131,9 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
 | 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
 | 7 | Production orders and metrics | **Done** — `sql/09` run, live, test confirmed. |
-| 8 | History generator (12 months, all through the ledger) | **In progress** — `sql/10_history.sql` written, never run. Still to do: run it in Supabase and check the result (see Open issues). |
-| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Next** |
-| 10 | Financials and reports | |
+| 8 | History generator (12 months, all through the ledger) | **Done** — `sql/10` run and confirmed. |
+| 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **In progress** — built and committed. Still to do: run `sql/11`, push, and try it (see Open issues). |
+| 10 | Financials and reports | **Next** |
 | 11 | Customer portal and configurator | |
 | 12 | About page polish, barcode labels, demo rehearsal | |
 
@@ -141,14 +141,18 @@ Status last updated: 2026-11-16 (session 4).
 
 ## Open issues / to-do
 
-### To finish step 8 (Mason, in this order)
+### To finish step 9 (Mason, in this order)
 
-`sql/10_history.sql` erases every transaction (test sales, POs, returns, production orders, starter stock) and rebuilds a year of history. Items, BOMs, suppliers, customers, settings and logins are not touched.
+1. **Supabase → SQL Editor:** run `sql/11_planning.sql`. Expected result: 6 rows, one per supplier, with a score, grade and recommendation. Roughly: Timberline lowest (late, D or F, Replace); Urethane and GripLine in the middle (Watch); Ridgeline, Precision Spin and Beehive A (Keep).
+2. **GitHub Desktop:** Push origin.
+3. **Live site:** hard-refresh and try the checks below.
 
-1. **Supabase → SQL Editor:** run `sql/10_history.sql`. It may take up to a minute. It has never been run, so if it stops with an error, paste the error into Claude Code; nothing is half-done when it fails (it is all-or-nothing).
-2. Expected result: one row. `ledger_mismatches` must be **0**. Roughly: several thousand `sales_orders`, `revenue` in the low hundreds of thousands, a few hundred `purchase_orders`, 100+ `production_orders`.
-3. **Live site checks:** Inventory shows "ledger check" passing; Movement history starts with "Opening balance" rows on 16 Nov 2025; Purchasing shows Timberline POs late and Urethane POs under 100% fill; Production report over the whole year shows yields below 100%; Sales Orders shows two open orders, one of them a backorder.
-4. **GitHub Desktop:** Push origin.
+Try it (exact numbers depend on the generated history, so check behaviour, not figures):
+- **Suppliers:** the scorecard panel matches the SQL result.
+- **Due for Review:** every item says "Never reviewed". Switch the first filter to "At or below reorder point", tick a part, click **Create draft POs for ticked parts**: a draft PO appears in Purchasing and the part's next review date moves 30 days out.
+- **Settings:** change "Service level z" from 1.65 to 2.33 and Save. Back on Due for Review, safety stock and reorder points are higher. Change "Ordering cost per PO" to 100: every EOQ doubles. Put both back.
+- **MRP:** the 12-longboard sales order shows under "Open sales orders" for `WBC-2004`, and the planned production order of 12 shows under "Open production". Change the planning days from 30 to 60: forecasts and net needs grow. Click **Create production order** on a board with a net need: its net drops and its parts move from "For boards to build" to "For planned jobs".
+- **Dashboard:** an "Items at reorder point" card.
 
 ### Step 6 loose ends
 

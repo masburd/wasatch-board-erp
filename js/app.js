@@ -24,19 +24,19 @@ const WBC = (() => {
     ]},
     { group: 'Buy', links: [
       { href: 'purchasing.html', label: 'Purchasing', built: true },
-      { href: 'review.html', label: 'Due for Review' },
+      { href: 'review.html', label: 'Due for Review', built: true },
       { href: 'suppliers.html', label: 'Suppliers', built: true },
     ]},
     { group: 'Make', links: [
       { href: 'production.html', label: 'Production', built: true },
-      { href: 'mrp.html', label: 'MRP' },
+      { href: 'mrp.html', label: 'MRP', built: true },
     ]},
     { group: 'Analyze', links: [
       { href: 'financials.html', label: 'Financials' },
       { href: 'reports.html', label: 'Reports' },
     ]},
     { group: 'System', links: [
-      { href: 'settings.html', label: 'Settings' },
+      { href: 'settings.html', label: 'Settings', built: true },
       { href: 'about.html', label: 'About this system', built: true },
     ]},
   ];
@@ -207,6 +207,26 @@ const WBC = (() => {
     return 'MO-' + String(id).padStart(5, '0');
   }
 
+  // Turn a list of parts to buy into draft purchase orders, one per supplier.
+  // lines look like [{ supplier_id, item_id, qty, unit_cost }].
+  // Returns { created: [PO ids], error }.
+  async function createDraftPOs(lines) {
+    const bySupplier = new Map();
+    lines.forEach((l) => {
+      if (!bySupplier.has(l.supplier_id)) bySupplier.set(l.supplier_id, []);
+      bySupplier.get(l.supplier_id).push({ item_id: l.item_id, qty: l.qty, unit_cost: l.unit_cost });
+    });
+    const created = [];
+    for (const [supplierId, supplierLines] of bySupplier) {
+      const { data, error } = await sb.rpc('create_purchase_order', {
+        p_supplier_id: supplierId, p_lines: supplierLines, p_note: 'Created from planning',
+      });
+      if (error) return { created, error };
+      created.push(data);
+    }
+    return { created, error: null };
+  }
+
   function showSetupNotice() {
     document.body.innerHTML = `
       <main class="center-card">
@@ -287,6 +307,6 @@ const WBC = (() => {
 
   return {
     sb, configured, esc, money, percent, qty, dateTime, today, date, dateOf, poNumber, moNumber, toast,
-    scanBox, findByCode, cameraScan, soNumber, initPage, signOut, showSetupNotice,
+    scanBox, findByCode, cameraScan, soNumber, createDraftPOs, initPage, signOut, showSetupNotice,
   };
 })();

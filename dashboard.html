@@ -8,7 +8,7 @@
 </head>
 <body>
   <div id="content" hidden>
-    <p class="note">Build steps 1–7 are in place: logins, master data, inventory, purchasing, the point of sale, sales orders, returns and production.</p>
+    <p class="note">Build steps 1–9 are in place: logins, master data, inventory, purchasing, the point of sale, sales orders, returns, production, a year of history and planning.</p>
 
     <div class="cards" id="cards"></div>
 
@@ -26,7 +26,7 @@
         <thead><tr><th>Setting</th><th class="num">Value</th><th>Unit</th></tr></thead>
         <tbody id="settings-body"></tbody>
       </table></div>
-      <p class="muted">Editing arrives with the Settings page.</p>
+      <p class="muted">Change these on the <a href="settings.html">Settings</a> page.</p>
     </div>
   </div>
 
@@ -71,6 +71,10 @@
       const jobs = await sb.from('production_orders').select('status').in('status', ['planned', 'in_progress']);
       const openJobs = jobs.error ? '!' : jobs.data.length;
 
+      // Items whose stock + on order has fallen to the reorder point.
+      const plan = await sb.from('item_planning').select('item_id').eq('needs_reorder', true);
+      const toReorder = plan.error ? '!' : plan.data.length;
+
       // Today's sales: revenue (after discount, before tax) on orders since midnight.
       const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
       const sales = await sb.from('sales_order_totals').select('revenue').gte('order_date', midnight.toISOString());
@@ -81,7 +85,7 @@
         [salesToday, 'Sales today'], [ordersToday, 'Orders today'],
         [units, 'Units on hand'], [value, 'Inventory value'],
         [onOrder, 'POs on their way'], [owed, 'Owed to suppliers'],
-        [openJobs, 'Production jobs open'],
+        [openJobs, 'Production jobs open'], [toReorder, 'Items at reorder point'],
         [parts, 'Parts'], [completes, 'Complete boards'], [bomLines, 'BOM lines'],
         [suppliers, 'Suppliers'], [customers, 'Customers'],
       ];

@@ -20,7 +20,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
 - **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
 - **Step 11 (customer portal and Build Your Own Board) live:** `sql/11` and `sql/13` re-run, `sql/14` run, "Confirm email" turned off in Supabase Auth, and everything pushed (user confirmed 2026-11-17). The step 11 test is still waiting for the team test session.
-- **Step 12 done:** user confirmed on 2026-11-17 that a printed label scans (scanner type not stated). Built: `labels.html` (printable Code 128 labels, Avery 5160 size, plus a "Test a label" scan box), `about.html` rewritten as a guide to every requirement and formula, and `DEMO.md` (the demo script and day-before checklist). No SQL. All coding steps in PLAN.md are now built; what is left is the team test session, the printed-label scan test, and rehearsing `DEMO.md`.
+- **Step 12 done:** user confirmed on 2026-11-17 that a printed label scans (scanner type not stated). Built: `labels.html` (printable Code 128 labels, Avery 5160 size, plus a "Test a label" scan box), `about.html` rewritten as a guide to every requirement and formula, `DEMO.md` (the demo script and day-before checklist) and `TESTING.md` (full test script). Movement history has a newest/oldest-first switch so the opening balances can be shown. No SQL. All coding steps in PLAN.md are now built; what is left is the team test session, the printed-label scan test, and rehearsing `DEMO.md`.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -94,6 +94,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 
 ### How the user works
 
+- `TESTING.md` is the team's full test script (sections A–P, results log). Keep it current when a page or rule changes; failures will come back from it by section number (for example "H5 failed").
 - From step 7 on, Mason runs the SQL files as each step is built but leaves the "Try it" tests for one combined session with teammates at the end. Keep every step's test in PLAN.md → "Open issues / to-do" until he reports it done; do not delete them when a step's SQL is confirmed.
 - Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.
 - Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. He confirmed they can sign in and are marked `staff`.

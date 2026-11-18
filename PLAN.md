@@ -141,6 +141,8 @@ Status last updated: 2026-11-16 (session 4, through step 11).
 
 ## Open issues / to-do
 
+**The full, up-to-date test script for the whole system is [TESTING.md](TESTING.md)** (sections A–P with a results log). The per-step tests below are the older versions kept for reference.
+
 ### Step 11 test (SQL run and pushed; only the test is left)
 
 Try it (use a private/incognito window so your staff login stays signed in elsewhere):

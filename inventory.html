@@ -95,6 +95,10 @@
       <div class="toolbar">
         <select id="hi-item" aria-label="Filter by item"><option value="">All items</option></select>
         <select id="hi-location" aria-label="Filter by location"><option value="">All locations</option></select>
+        <select id="hi-order" aria-label="Sort order">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first (from the opening balances)</option>
+        </select>
         <span class="muted" id="hi-count"></span>
       </div>
       <div class="table-wrap"><table>
@@ -104,7 +108,7 @@
         </tr></thead>
         <tbody id="hi-body"></tbody>
       </table></div>
-      <p class="muted">The most recent 200 ledger rows. Rows are never edited or deleted; mistakes are fixed with a new correcting row.</p>
+      <p class="muted">200 ledger rows at a time, newest or oldest first. Rows are never edited or deleted; mistakes are fixed with a new correcting row.</p>
     </section>
   </div>
 
@@ -350,8 +354,9 @@
       };
 
       async function loadHistory() {
+        const oldestFirst = $('hi-order').value === 'oldest';
         let query = sb.from('inventory_movements').select('*')
-          .order('occurred_at', { ascending: false }).order('id', { ascending: false }).limit(200);
+          .order('occurred_at', { ascending: oldestFirst }).order('id', { ascending: oldestFirst }).limit(200);
         if ($('hi-item').value) query = query.eq('item_id', Number($('hi-item').value));
         if ($('hi-location').value) query = query.eq('location_id', Number($('hi-location').value));
         const { data, error } = await query;
@@ -378,6 +383,7 @@
       }
       $('hi-item').addEventListener('change', loadHistory);
       $('hi-location').addEventListener('change', loadHistory);
+      $('hi-order').addEventListener('change', loadHistory);
 
       // ---------------- tabs ----------------
       let currentTab = 'onhand';

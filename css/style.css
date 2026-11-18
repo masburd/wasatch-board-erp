@@ -245,3 +245,9 @@ tr.week-first td { border-top: 2px solid var(--line); }
   .label { break-inside: avoid; }
   #print-area { overflow: visible; }
 }
+
+/* Test checklist */
+.test-row.test-pass { background: #eef8f3; }
+.test-row.test-fail { background: #fdecea; }
+.test-note input { width: 100%; margin-top: 6px; font-size: 13px; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }

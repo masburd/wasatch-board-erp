@@ -40,6 +40,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 12 | `sql/12_financials_reports.sql` | Yes |
 | 13 | `sql/13_mrp_weekly.sql` | Yes (re-run after the step 11 edit) |
 | 14 | `sql/14_portal.sql` | Yes |
+| 15 | `sql/15_test_checklist.sql` | **Not confirmed** — ask the user |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -94,7 +95,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 
 ### How the user works
 
-- `TESTING.md` is the team's full test script (sections A–P, results log). Keep it current when a page or rule changes; failures will come back from it by section number (for example "H5 failed").
+- `TESTING.md` is the team's full test script (sections A–P). `tests.html` (System → Test checklist) reads it from the site and stores Pass/Fail/notes in the `test_results` table (`sql/15`), shared and realtime. Test lines must keep the form `- [ ] **X1.** …` (optionally `**X1. Title.**`) and sections `## X. Title`, or the page will not see them. Keep it current when a page or rule changes; failures will come back from it by section number (for example "H5 failed").
 - From step 7 on, Mason runs the SQL files as each step is built but leaves the "Try it" tests for one combined session with teammates at the end. Keep every step's test in PLAN.md → "Open issues / to-do" until he reports it done; do not delete them when a step's SQL is confirmed.
 - Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.
 - Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. He confirmed they can sign in and are marked `staff`.

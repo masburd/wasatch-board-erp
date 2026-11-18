@@ -38,6 +38,7 @@ const WBC = (() => {
     ]},
     { group: 'System', links: [
       { href: 'settings.html', label: 'Settings', built: true },
+      { href: 'tests.html', label: 'Test checklist', built: true },
       { href: 'about.html', label: 'About this system', built: true },
     ]},
   ];

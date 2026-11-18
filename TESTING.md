@@ -6,7 +6,8 @@ Live site: https://masburd.github.io/wasatch-board-erp/
 
 ## How to use this
 
-- Tick each box as it passes. If something fails, write down the page, what you clicked, and the exact message, and paste it to Claude Code.
+- **Record results on the ERP's Test checklist page** (System → Test checklist). It shows these same tests with Pass and Fail buttons and a note box, and saves the results for the whole team. The boxes in this file cannot be ticked.
+- If something fails, write the page, what you clicked and the exact message in the note, and paste it to Claude Code with the test number.
 - **Numbers.** Prices come from the spec and never change unless you edit them, so totals worked out from prices are exact. Stock levels and average costs come from the generated year of history, so those you check by **rule** (for example "goes down by 2"), not by an exact figure.
 - **Put things back.** Some tests change a setting or a price. Each one says when to change it back.
 - **Logins you need:**

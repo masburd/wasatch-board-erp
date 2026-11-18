@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test checklist · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Team test checklist</h2>
+        <div class="toolbar" style="margin:0">
+          <select id="filter" aria-label="Which tests to show">
+            <option value="">All tests</option>
+            <option value="todo">Not tested yet</option>
+            <option value="fail">Failed</option>
+            <option value="pass">Passed</option>
+          </select>
+        </div>
+      </div>
+      <div class="cards" id="summary"></div>
+      <p class="muted" style="margin:0">The tests are read from <a href="TESTING.md">TESTING.md</a>. Click Pass or Fail on each one;
+        results are saved for the whole team and appear on everyone's screen. For a failure, write what happened and
+        the exact message in the note, then paste it to Claude Code with the test number.</p>
+    </div>
+    <div id="sections"><div class="panel"><p class="muted">Loading the tests…</p></div></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Test checklist');
+      if (!me) return;
+      const { sb, esc, dateTime, toast } = WBC;
+      const $ = (id) => document.getElementById(id);
+      const myName = me.profile.full_name || me.profile.email || 'Staff';
+
+      // ---------------- read the tests from TESTING.md ----------------
+      // Sections start with "## A. Title". A test is a line like
+      // "- [ ] **A1.** what to do". Other lines in a section are shown as notes.
+      let sections = [];
+      try {
+        const response = await fetch('TESTING.md', { cache: 'no-cache' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        sections = parse(await response.text());
+      } catch (error) {
+        $('sections').innerHTML = `<div class="panel"><p class="error-text">Could not read TESTING.md (${esc(error.message)}).</p></div>`;
+        return;
+      }
+
+      function parse(text) {
+        const result = [];
+        let current = null;
+        text.split('\n').forEach((line) => {
+          const heading = line.match(/^## ([A-Z])\. (.+)$/);
+          if (heading) { current = { letter: heading[1], title: heading[2], intro: [], tests: [] }; result.push(current); return; }
+          if (/^## /.test(line) || /^---/.test(line)) { current = null; return; }
+          if (!current || !line.trim()) return;
+          // The bold part may also hold a short title: "**B1. Items & BOMs.**".
+          const test = line.match(/^- \[[ xX]\] \*\*([A-Z]\d+)\.\s*(.*?)\*\*\s*(.*)$/);
+          if (test) current.tests.push({ id: test[1], text: (test[2] ? '**' + test[2] + '** ' : '') + test[3] });
+          else if (current.tests.length === 0 || /^- \*\*/.test(line)) current.intro.push(line.replace(/^- /, ''));
+        });
+        return result.filter((s) => s.tests.length);
+      }
+
+      // Just enough Markdown for the test text: **bold**, *italic*, `code`, [links](url).
+      function inline(markdown) {
+        return esc(markdown)
+          .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) =>
+            /^(https?:|[\w.-]+\.(html|md))/.test(url) ? `<a href="${url}">${label}</a>` : label)
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/(^|[\s(])\*([^*]+?)\*/g, '$1<em>$2</em>')
+          .replace(/`([^`]+)`/g, '<code>$1</code>');
+      }
+
+      // ---------------- results (shared) ----------------
+      let results = new Map();   // test id -> row from test_results
+
+      async function loadResults() {
+        const { data, error } = await sb.from('test_results').select('*');
+        if (error) {
+          toast(error.message + ' — has sql/15_test_checklist.sql been run?', true);
+          return;
+        }
+        results = new Map(data.map((r) => [r.test_id, r]));
+        render();
+      }
+
+      function render() {
+        const all = sections.flatMap((s) => s.tests);
+        const count = (status) => all.filter((t) => (results.get(t.id) || {}).status === status).length;
+        const passed = count('pass'), failed = count('fail');
+        $('summary').innerHTML = [
+          [all.length, 'Tests'], [passed, 'Passed'], [failed, 'Failed'], [all.length - passed - failed, 'Not tested yet'],
+        ].map(([n, label]) => `<div class="card"><div class="num">${n}</div><div class="lbl">${label}</div></div>`).join('');
+
+        const filter = $('filter').value;
+        const show = (t) => {
+          const status = (results.get(t.id) || {}).status;
+          return !filter || (filter === 'todo' ? !status : status === filter);
+        };
+
+        $('sections').innerHTML = sections.map((s) => {
+          const tests = s.tests.filter(show);
+          if (!tests.length) return '';
+          const done = s.tests.filter((t) => results.has(t.id)).length;
+          return `<div class="panel">
+            <h2>${esc(s.letter)}. ${inline(s.title)} <span class="muted" style="font-weight:400;font-size:14px">${done} of ${s.tests.length} done</span></h2>
+            ${s.intro.map((p) => `<p class="muted" style="margin:0 0 8px">${inline(p)}</p>`).join('')}
+            <div class="table-wrap"><table>
+              <tbody>${tests.map((t) => {
+                const r = results.get(t.id) || {};
+                return `<tr data-test="${esc(t.id)}" class="test-row ${r.status ? 'test-' + r.status : ''}">
+                  <td class="nowrap"><strong>${esc(t.id)}</strong></td>
+                  <td>${inline(t.text)}
+                    <div class="test-note"><input class="t-note" maxlength="500" placeholder="Note (what happened, exact message)"
+                      value="${esc(r.note || '')}" aria-label="Note for ${esc(t.id)}"></div>
+                    ${r.status ? `<div class="muted" style="font-size:12px">${r.status === 'pass' ? 'Passed' : 'Failed'} · ${esc(r.tester_name || '')} · ${esc(dateTime(r.updated_at))}</div>` : ''}
+                  </td>
+                  <td class="nowrap">
+                    <button class="btn small t-pass ${r.status === 'pass' ? 'primary' : ''}">Pass</button>
+                    <button class="btn small t-fail ${r.status === 'fail' ? 'danger' : ''}">Fail</button>
+                    ${r.status ? '<button class="btn small t-clear">Clear</button>' : ''}
+                  </td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table></div>
+          </div>`;
+        }).join('') || '<div class="panel"><p class="muted">No tests match this filter.</p></div>';
+      }
+
+      // ---------------- marking a test ----------------
+      async function save(id, status, note) {
+        const { error } = await sb.from('test_results').upsert({
+          test_id: id, status, note: note || null, tester_name: myName,
+          tested_by: me.user.id, updated_at: new Date().toISOString(),
+        });
+        if (error) { toast(error.message, true); return; }
+        await loadResults();
+      }
+
+      $('sections').addEventListener('click', async (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const row = button.closest('[data-test]');
+        const id = row.dataset.test;
+        const note = row.querySelector('.t-note').value.trim();
+        if (button.classList.contains('t-pass')) await save(id, 'pass', note);
+        if (button.classList.contains('t-fail')) {
+          if (!note) { toast('Write what happened in the note first, then click Fail.', true); row.querySelector('.t-note').focus(); return; }
+          await save(id, 'fail', note);
+        }
+        if (button.classList.contains('t-clear')) {
+          const { error } = await sb.from('test_results').delete().eq('test_id', id);
+          if (error) { toast(error.message, true); return; }
+          await loadResults();
+        }
+      });
+
+      // Editing the note of a test that is already marked saves when you leave the box.
+      $('sections').addEventListener('change', async (event) => {
+        if (!event.target.classList.contains('t-note')) return;
+        const row = event.target.closest('[data-test]');
+        const r = results.get(row.dataset.test);
+        if (r) await save(r.test_id, r.status, event.target.value.trim());
+      });
+
+      $('filter').addEventListener('change', render);
+      await loadResults();
+      if (!results.size && !$('summary').innerHTML) render();
+
+      // Realtime: a teammate's tick appears here (not while you are typing a note).
+      let reloadTimer;
+      const queueReload = () => {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          if (document.activeElement && document.activeElement.matches('.t-note')) queueReload(); else loadResults();
+        }, 500);
+      };
+      sb.channel('tests-page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'test_results' }, queueReload)
+        .subscribe();
+    })();
+  </script>
+</body>
+</html>

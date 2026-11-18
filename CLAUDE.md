@@ -10,7 +10,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
 - **Steps 1–7 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, Point of Sale, About.
-- **Step 5 (POS) done and live:** test sale confirmed. On 2026-11-17 the user confirmed the phone camera opens and shows the picture; reading a real barcode is still unverified (planned with the step 12 printed labels).
+- **Step 5 (POS) done and live:** test sale confirmed. On 2026-11-17 the user confirmed the phone camera opens and that printed labels scan.
 - **Step 6 (sales orders, returns, exchanges) pushed and live.** `sql/08` is in the database (checked from the live site on 2026-11-16: `returns`, `return_lines` and `open_order_lines` all answer). Mason thinks he ran the two tests but was not sure; the expected numbers are in PLAN.md → "Open issues / to-do" if anything looks off.
 - All code through step 11 is committed and pushed (user pushed 2026-11-17).
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
@@ -20,7 +20,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
 - **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
 - **Step 11 (customer portal and Build Your Own Board) live:** `sql/11` and `sql/13` re-run, `sql/14` run, "Confirm email" turned off in Supabase Auth, and everything pushed (user confirmed 2026-11-17). The step 11 test is still waiting for the team test session.
-- **Step 12 built and committed, not yet pushed or confirmed:** `labels.html` (printable Code 128 labels, Avery 5160 size, plus a "Test a label" scan box), `about.html` rewritten as a guide to every requirement and formula, and `DEMO.md` (the demo script and day-before checklist). No SQL. All coding steps in PLAN.md are now built; what is left is the team test session, the printed-label scan test, and rehearsing `DEMO.md`.
+- **Step 12 done:** user confirmed on 2026-11-17 that a printed label scans (scanner type not stated). Built: `labels.html` (printable Code 128 labels, Avery 5160 size, plus a "Test a label" scan box), `about.html` rewritten as a guide to every requirement and formula, and `DEMO.md` (the demo script and day-before checklist). No SQL. All coding steps in PLAN.md are now built; what is left is the team test session, the printed-label scan test, and rehearsing `DEMO.md`.
 
 ### SQL files and whether they have been run in Supabase
 

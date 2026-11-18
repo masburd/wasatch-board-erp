@@ -128,14 +128,14 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 2 | Master data: tables, seed, Items & BOMs page | **Done** — `sql/01`–`03` run in Supabase, pushed to GitHub |
 | 3 | Inventory core: ledger, levels, adjustments, transfers, realtime | **Done** — `sql/04`–`05` run in Supabase, live, cycle count confirmed working |
 | 4 | Purchasing: suppliers, POs, receiving, weighted average cost | **Done** — `sql/06` run in Supabase, live, PO receipt and re-averaging confirmed working |
-| 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Phone camera test skipped for now (see Open issues). |
+| 5 | POS: barcode scanning and receipt | **Done** — `sql/07` run, live, test sale confirmed. Printed-label scanning confirmed in step 12. |
 | 6 | Sales orders, returns and exchanges | **Done** — pages live, `sql/08` confirmed in the database. The two tests were probably run but not confirmed with numbers (see Open issues). |
 | 7 | Production orders and metrics | **Done** — `sql/09` run, live, test confirmed. |
 | 8 | History generator (12 months, all through the ledger) | **Done** — `sql/10` run and confirmed. |
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Done** — `sql/11` run, live, confirmed. |
 | 10 | Financials and reports | **Done** — `sql/12` and `sql/13` (weekly MRP) run, live, confirmed. |
 | 11 | Customer portal and configurator | **Done** — `sql/11`, `sql/13` re-run, `sql/14` run, email confirmation off, pushed. Test waits for the team session (see Open issues). |
-| 12 | About page polish, barcode labels, demo rehearsal | **Built** — labels page, About guide and `DEMO.md` committed. Still to do: push, print and scan labels, team test session, rehearse `DEMO.md`. |
+| 12 | About page polish, barcode labels, demo rehearsal | **Done** — labels print and scan (confirmed). Still to do: team test session and rehearse `DEMO.md`. |
 
 Status last updated: 2026-11-16 (session 4, through step 11).
 
@@ -213,14 +213,13 @@ Try it, part 2 (return and exchange):
 
 ### Skipped for now
 
-- **Phone camera test** (step 5). The camera opens and shows the picture on a phone (confirmed 2026-11-17). Still to do: point it at a real barcode. Any product barcode should say "Nothing matches"; a printed label from step 12 should add the item.
+- **Barcode scanning with a printed label:** works (confirmed 2026-11-17). If only one of the two ways was tried (USB scanner or phone camera), try the other before the demo; both use the same lookup.
 
 ### Not verified yet
 
 - Step 6 test numbers (refund $176.96, write-off $79.25) were not confirmed by the user.
-- Camera reading a real barcode (the camera itself opens; see above).
 - Realtime has not been tested with two real browsers on any page.
-- USB barcode scanner: only tested with typed input + Enter, not a physical scanner.
+- Barcode scanning: a printed label scans (2026-11-17); see above if only one method was tried.
 - Receipt printing has not been tried on a real printer.
 
 ### Known gaps, planned for later steps

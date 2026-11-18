@@ -158,6 +158,39 @@ Try it (use a private/incognito window so your staff login stays signed in elsew
 - **MRP → Order now:** before the custom order is issued, its parts appear under "For planned jobs".
 - **Security check:** signed in as the customer, open `dashboard.html`: it says "Staff access needed".
 
+### Team test session: steps 7–10 (SQL already run; only the tests are left)
+
+The history generator (step 8) replaced the starter stock, so stock levels and average costs differ from the early tests. Check the behaviour and the yields; dollar amounts will not match the old starter-stock figures.
+
+**Step 7, production**
+- Production → New production order → `WBC-2001`, quantity 5. Every part shows "Yes" under Enough?. Click **Save and issue parts now**.
+- Inventory → Movement history shows a "Production issue" row for each part, and each part's OREM stock is down by 5.
+- Back on the order: Add scrap or rework line twice. Line 1: 1 board, Cracked deck, Scrapped. Line 2: 1 board, Grip tape misapplied, Reworked. The summary reads "4 good = 5 started − 1 scrapped. Final yield 80% · first-pass yield 60%."
+- Click **Complete order**: `WBC-2001` at OREM goes up by 4. Into stock + scrap cost = parts cost, and scrap cost = one board's cost.
+- Production report tab, today only: 1 job, 5 started, 4 good, 80.0% / 60.0% / 20.0% scrap rate.
+- Try quantity 500: issuing is refused with "Not enough stock" and nothing moves.
+
+**Step 8, history**
+- Inventory: the ledger check passes. Movement history (oldest first) starts with "Opening balance" rows on 16 Nov 2025.
+- Purchasing: Timberline POs show days late; Urethane POs show fill rates under 100%.
+- Production report over the whole year: yields below 100%, scrap listed by reason.
+- Sales Orders: the 12-longboard order for Provo Board Rentals sits in the Backorders panel.
+
+**Step 9, planning**
+- Suppliers: the scorecard grades Timberline lowest (Replace), Ridgeline / Precision Spin / Beehive A (Keep).
+- Due for Review: filter "At or below reorder point", tick a part, **Create draft POs for ticked parts**: a draft appears in Purchasing and the part's next review moves 30 days out.
+- Settings: "Service level z" 1.65 → 2.33 raises safety stock and reorder points; "Ordering cost per PO" 25 → 100 doubles every EOQ. Put both back.
+- MRP → Order now: `WBC-2004` shows the 12-unit open sales order and the 12-unit planned production order. 30 → 60 planning days makes the needs grow.
+- Dashboard: an "Items at reorder point" card.
+
+**Step 10, financials, reports and weekly MRP**
+- Financials: net sales = revenue − refunds; gross profit = net sales − COGS. Monthly table shows a summer peak and a December bump. "Last 30 days" changes every number.
+- Live update (needs two people or two windows): keep Financials open, ring up a POS sale elsewhere; revenue rises by the sale's subtotal within a few seconds.
+- Reports: Sales by Day / Week / Month; Provo and SLC split the revenue, Orem has none. Top sellers, Low stock, Inventory by location and Supplier performance all fill in.
+- MRP → Weekly plan: five rows per item over 4 weeks. Place a sales order for 10 of a board wanted two weeks out: that week's need rises for the board and its parts.
+
+**Step 6 note:** the step 6 test below assumed starter stock ("Provo only has 3 cruisers"). After the history rebuild, pick a quantity larger than what Provo holds to see the backorder.
+
 ### Step 6 loose ends
 
 `sql/08` is confirmed in the database (2026-11-16). Mason believes he ran the tests below but was not certain, so they stay here as a quick check before the demo.

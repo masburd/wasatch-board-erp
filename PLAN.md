@@ -135,7 +135,7 @@ Backorders, estimated available date, reorder point, EOQ, items due for review, 
 | 9 | Planning: reorder point, EOQ, due for review, MRP, supplier scorecard | **Done** — `sql/11` run, live, confirmed. |
 | 10 | Financials and reports | **Done** — `sql/12` and `sql/13` (weekly MRP) run, live, confirmed. |
 | 11 | Customer portal and configurator | **Done** — `sql/11`, `sql/13` re-run, `sql/14` run, email confirmation off, pushed. Test waits for the team session (see Open issues). |
-| 12 | About page polish, barcode labels, demo rehearsal | **Next** |
+| 12 | About page polish, barcode labels, demo rehearsal | **Built** — labels page, About guide and `DEMO.md` committed. Still to do: push, print and scan labels, team test session, rehearse `DEMO.md`. |
 
 Status last updated: 2026-11-16 (session 4, through step 11).
 
@@ -151,6 +151,14 @@ Try it (use a private/incognito window so your staff login stays signed in elsew
 - **As staff:** Sales Orders shows both portal orders. Production shows a planned "Custom Board" order with the chosen parts. Issue it, complete it: the board is received at the pickup store. Then fulfil the sales order. Back in the customer's My orders it shows "Picked up".
 - **MRP → Order now:** before the custom order is issued, its parts appear under "For planned jobs".
 - **Security check:** signed in as the customer, open `dashboard.html`: it says "Staff access needed".
+
+### Step 12 test (no SQL; push first)
+
+- Stock → **Barcode labels** → "1 of each shown" → **Print labels**. In the print window choose 100% scale. Plain paper is fine.
+- On the same page, click into **Test a label** and scan a label with the USB scanner: it shows "Found: WBC-…". Click **Use camera** on a phone and scan a label: same result. This also finishes the phone camera test.
+- Scan the same label into Point of Sale: the item goes into the cart.
+- **About this system** reads as a guide to all 12 requirements; the formula numbers match the Settings page.
+- Rehearse [DEMO.md](DEMO.md) once end to end with the devices you will use on Dec 2.
 
 ### Team test session: steps 7–10 (SQL already run; only the tests are left)
 
@@ -227,7 +235,6 @@ Try it, part 2 (return and exchange):
 - Starter stock from `sql/05` is temporary: step 8's history generator replaces it with real opening balances and 12 months of history. Test POs made now will be wiped then.
 - Settings are read-only on the dashboard: an editable Settings page is still to be built (needed before step 9).
 - Customers cannot log in yet: portal and its security rules are step 11. Master data is staff-only until then.
-- Printable barcode labels: step 12.
 
 ### Housekeeping
 

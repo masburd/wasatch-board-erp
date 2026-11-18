@@ -20,7 +20,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
 - **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
 - **Step 11 (customer portal and Build Your Own Board) live:** `sql/11` and `sql/13` re-run, `sql/14` run, "Confirm email" turned off in Supabase Auth, and everything pushed (user confirmed 2026-11-17). The step 11 test is still waiting for the team test session.
-- **Next to build:** step 12, barcode labels, About page polish, demo rehearsal.
+- **Step 12 built and committed, not yet pushed or confirmed:** `labels.html` (printable Code 128 labels, Avery 5160 size, plus a "Test a label" scan box), `about.html` rewritten as a guide to every requirement and formula, and `DEMO.md` (the demo script and day-before checklist). No SQL. All coding steps in PLAN.md are now built; what is left is the team test session, the printed-label scan test, and rehearsing `DEMO.md`.
 
 ### SQL files and whether they have been run in Supabase
 
@@ -89,6 +89,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - `planned_job_parts` view (in `sql/11`) gives the parts planned production orders will take: component rows if the order has them (custom), otherwise BOM × quantity. Both MRP functions use it, so custom builds count as direct component demand.
 - The portal cart lives in the browser's localStorage until the order is placed. Customers get realtime only on `inventory_levels`; "My orders" refreshes on open, on the Refresh button and when stock changes.
 - Timestamps are shown with `WBC.dateOf` (viewer's time zone); plain dates with `WBC.date`.
+- Labels use JsBarcode 3.11.6 from jsdelivr, Code 128 of `items.barcode` (= SKU). The About page reads the formula numbers from `settings`, so keep its `data-setting` spans in step with setting keys.
 - Camera scanning is `WBC.cameraScan(onCode)` in `js/app.js` (lazy-loads html5-qrcode from unpkg). Any new scan box should get both `WBC.scanBox` and a "Use camera" button.
 
 ### How the user works

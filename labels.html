@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barcode labels · Wasatch Board Co. ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="content" hidden>
+    <div class="panel no-print">
+      <div class="panel-head">
+        <h2>Print barcode labels</h2>
+        <div class="toolbar" style="margin:0">
+          <select id="f-type" aria-label="Item type">
+            <option value="">All items</option>
+            <option value="part">Parts</option>
+            <option value="complete">Complete boards</option>
+          </select>
+          <button class="btn" id="one-each">1 of each shown</button>
+          <button class="btn" id="clear">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>SKU / barcode</th><th>Item</th><th class="num">Price</th><th class="num">Labels to print</th></tr></thead>
+        <tbody id="item-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+      <div class="inline-form" style="margin-top:14px">
+        <label><span><input type="checkbox" id="show-price" checked> Show price on the label</span></label>
+        <label>Skip the first <input class="qty" type="number" id="skip" min="0" max="29" step="1" value="0"> labels on the sheet</label>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="print-btn">Print labels</button>
+      </div>
+      <p class="muted">Labels are sized for a US Letter sheet of 30 labels, 3 across (Avery 5160 or the same size).
+        Plain paper also works: cut them out. In the print window choose 100% scale (no "fit to page").
+        "Skip" leaves blanks at the start, so a part-used sheet can be reused.
+        The barcode is Code 128 and holds the item's barcode value, which is its SKU.</p>
+    </div>
+
+    <div class="panel no-print">
+      <h2>Test a label</h2>
+      <p class="muted" style="margin-top:0">Scan a printed label with the USB scanner or the camera. The item should appear below.
+        This is the same lookup the Point of Sale and Inventory pages use.</p>
+      <div class="scan">
+        <input id="test-scan" placeholder="Click here, then scan a label (or type a SKU and press Enter)" aria-label="Scan a label to test it" autocomplete="off">
+        <button class="btn" id="test-cam">Use camera</button>
+      </div>
+      <p id="test-result" role="status"></p>
+    </div>
+
+    <div class="panel" id="print-area">
+      <h2 class="no-print">Preview</h2>
+      <div class="label-sheet" id="sheet"></div>
+      <p class="muted no-print" id="sheet-note"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('Barcode labels');
+      if (!me) return;
+      const { sb, esc, money, toast, scanBox, findByCode, cameraScan } = WBC;
+      const $ = (id) => document.getElementById(id);
+
+      let items = [];
+      let copies = new Map();    // item id -> number of labels to print
+
+      const { data, error } = await sb.from('items')
+        .select('id, sku, barcode, name, price, item_type')
+        .in('item_type', ['part', 'complete']).eq('is_active', true).order('sku');
+      if (error) { toast(error.message, true); return; }
+      items = data;
+
+      // ---------------- choosing labels ----------------
+      function visible() {
+        const type = $('f-type').value;
+        return items.filter((i) => !type || i.item_type === type);
+      }
+
+      function renderList() {
+        $('item-body').innerHTML = visible().map((i) => `<tr data-item="${i.id}">
+          <td class="nowrap">${esc(i.barcode || i.sku)}</td><td>${esc(i.name)}</td>
+          <td class="num">${money(i.price)}</td>
+          <td class="num"><input class="qty copies" type="number" min="0" max="30" step="1"
+            value="${copies.get(i.id) || ''}" placeholder="0" aria-label="Labels for ${esc(i.name)}"></td></tr>`).join('');
+      }
+
+      $('f-type').addEventListener('change', renderList);
+      $('item-body').addEventListener('input', (event) => {
+        const row = event.target.closest('[data-item]');
+        if (!row) return;
+        const n = Math.max(0, Math.min(30, Math.floor(Number(event.target.value) || 0)));
+        if (n) copies.set(Number(row.dataset.item), n); else copies.delete(Number(row.dataset.item));
+        renderSheet();
+      });
+      $('one-each').addEventListener('click', () => { visible().forEach((i) => copies.set(i.id, 1)); renderList(); renderSheet(); });
+      $('clear').addEventListener('click', () => { copies = new Map(); renderList(); renderSheet(); });
+      $('show-price').addEventListener('change', renderSheet);
+      $('skip').addEventListener('input', renderSheet);
+
+      // ---------------- the sheet ----------------
+      // Each label: name, a Code 128 barcode of the item's barcode value, and the price.
+      function renderSheet() {
+        const showPrice = $('show-price').checked;
+        const skip = Math.max(0, Math.min(29, Math.floor(Number($('skip').value) || 0)));
+        const labels = [];
+        items.forEach((i) => { for (let n = 0; n < (copies.get(i.id) || 0); n++) labels.push(i); });
+
+        $('sheet').innerHTML = '<div class="label" style="visibility:hidden"></div>'.repeat(labels.length ? skip : 0)
+          + labels.map((i, index) => `<div class="label">
+              <div class="l-name">${esc(i.name)}</div>
+              <svg id="bc-${index}"></svg>
+              ${showPrice && i.price !== null ? `<div class="l-price">${money(i.price)}</div>` : ''}
+            </div>`).join('');
+        labels.forEach((i, index) => {
+          window.JsBarcode('#bc-' + index, i.barcode || i.sku, {
+            format: 'CODE128', width: 1.6, height: 40, margin: 0, fontSize: 11, textMargin: 1,
+          });
+        });
+
+        const sheets = Math.ceil((labels.length + (labels.length ? skip : 0)) / 30);
+        $('sheet-note').textContent = labels.length
+          ? `${labels.length} label${labels.length === 1 ? '' : 's'} · ${sheets} sheet${sheets === 1 ? '' : 's'}.`
+          : 'Enter how many labels you want next to each item.';
+        $('print-btn').disabled = !labels.length;
+      }
+
+      $('print-btn').addEventListener('click', () => {
+        // Print only the label sheet, not the menu or the controls.
+        document.body.classList.add('printing-labels');
+        window.print();
+        document.body.classList.remove('printing-labels');
+      });
+
+      // ---------------- test a scan ----------------
+      function testCode(code) {
+        const item = findByCode(items, code);
+        $('test-result').innerHTML = item
+          ? `<span class="ok-text">Found: <strong>${esc(item.sku)}</strong> · ${esc(item.name)} · ${money(item.price)}</span>`
+          : `<span class="bad-text">"${esc(code)}" does not match any item.</span>`;
+      }
+      scanBox($('test-scan'), testCode);
+      $('test-cam').addEventListener('click', () => cameraScan(testCode));
+
+      if (!window.JsBarcode) {
+        $('sheet-note').textContent = 'The barcode drawing library did not load. Check the internet connection and reload.';
+      }
+      renderList();
+      renderSheet();
+    })();
+  </script>
+</body>
+</html>

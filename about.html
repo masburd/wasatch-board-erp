@@ -10,26 +10,105 @@
   <div id="content" hidden>
     <div class="panel prose">
       <h2>What this is</h2>
-      <p>A working mini-ERP for Wasatch Board Co., a fictional Utah skateboard company, built for GSCM 401. It covers selling, inventory, purchasing, light manufacturing, planning and financial reporting across three locations.</p>
+      <p>A working mini-ERP for Wasatch Board Co., a fictional Utah skateboard company, built for GSCM 401.
+        The company sells 20 parts and assembles 5 complete boards at its Orem warehouse, and sells from two stores
+        (Provo and Salt Lake City). Customers can also order online for store pickup, including a custom board they design.</p>
+      <p>The database holds twelve months of generated business history (16 Nov 2025 to yesterday) plus anything
+        typed in since, so every report has real-looking data behind it.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Where each requirement lives</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Requirement</th><th>Where to see it</th><th>What to look for</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Point of Sale</td><td><a href="pos.html">Point of Sale</a></td><td>Scan items, discount, tax, receipt. The sale takes stock from that store and records revenue and cost.</td></tr>
+          <tr><td>2</td><td>Inventory</td><td><a href="inventory.html">Inventory</a>, <a href="sales-orders.html">Sales Orders</a></td><td>Stock by location, transfers, counts with reason codes, movement history. Backorders with an estimated date on Sales Orders.</td></tr>
+          <tr><td>3</td><td>Barcodes</td><td><a href="labels.html">Barcode labels</a>, POS, Inventory, Purchasing</td><td>Print labels, then scan with a USB scanner or the phone camera.</td></tr>
+          <tr><td>4</td><td>Sales orders</td><td><a href="sales-orders.html">Sales Orders</a></td><td>Order Placed → Fulfilled → Closed, or Cancelled.</td></tr>
+          <tr><td>5</td><td>Returns and exchanges</td><td><a href="returns.html">Returns &amp; Exchanges</a></td><td>Reason codes; defective items are not restocked and their cost is written off.</td></tr>
+          <tr><td>6</td><td>Production</td><td><a href="production.html">Production</a></td><td>Issue parts, complete with scrap and rework, cost rolled up from parts, report by date range.</td></tr>
+          <tr><td>7</td><td>Purchasing and suppliers</td><td><a href="purchasing.html">Purchasing</a>, <a href="suppliers.html">Suppliers</a>, <a href="review.html">Due for Review</a></td><td>PO life cycle, expected vs. actual dates, reorder points, EOQ, periodic review, supplier scorecard.</td></tr>
+          <tr><td>8</td><td>MRP</td><td><a href="mrp.html">MRP</a></td><td>Weekly plan for the next 4 weeks with order-by dates; buttons to create orders.</td></tr>
+          <tr><td>9</td><td>Financial reporting</td><td><a href="financials.html">Financials</a></td><td>P&amp;L, inventory valuation, turnover. Updates live.</td></tr>
+          <tr><td>10</td><td>Reporting</td><td><a href="reports.html">Reports</a></td><td>Sales by day/week/month, top sellers, low stock, stock by location, supplier performance.</td></tr>
+          <tr><td>11</td><td>Customer-facing ERP</td><td><a href="portal.html">Customer shop</a> (sign up from the login page)</td><td>Live stock by store, cart, pickup orders, Build Your Own Board, My orders.</td></tr>
+          <tr><td>12</td><td>Multi-user</td><td>Any two browsers</td><td>Change something in one; the other updates within seconds.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="panel prose">
+      <h2>The rules everything follows</h2>
+      <ul>
+        <li><strong>One inventory ledger.</strong> Every stock change (sale, receipt, transfer, build, return, count) is one row
+          in a single movements table, with a + or − quantity and the cost at that moment. On-hand is the sum of that ledger.
+          Rows are never edited or deleted; a mistake is fixed with a new correcting row. Stock can never go below zero.</li>
+        <li><strong>Everything is calculated.</strong> No total, cost, status or metric is typed in. Each screen recalculates from
+          the stored transactions, so changing an input (a setting, a sale, a receipt) changes every result that depends on it.</li>
+        <li><strong>Weighted average cost.</strong> Each item has one average cost for the whole company. When stock arrives
+          (purchase receipt, finished boards, restocked return):
+          new average = (units on hand × old average + units in × their cost) ÷ (units on hand + units in).
+          A complete board's cost is the cost of the parts actually used to build it.</li>
+        <li><strong>All or nothing.</strong> Each business transaction (a sale, a receipt, a build, a return) runs as one database
+          function. If any part fails, for example not enough stock, nothing is saved.</li>
+      </ul>
+    </div>
+
+    <div class="panel prose">
+      <h2>The formulas</h2>
+      <ul>
+        <li><strong>Usage:</strong> units sold + units used in production, averaged per day over the last
+          <span data-setting="usage_window_days">90</span> days (d). σ is the standard deviation of that daily usage.</li>
+        <li><strong>Reorder point</strong> = d × L + z × σ × √L, where L is the supplier's lead time in days and
+          z = <span data-setting="service_level_z">1.65</span> (the service level).</li>
+        <li><strong>EOQ</strong> = √(2DS ÷ H), where D = the last 365 days of usage, S = $<span data-setting="ordering_cost">25</span>
+          per order, and H = <span data-setting="holding_rate" data-percent>25%</span> of the item's unit cost per year.</li>
+        <li><strong>Periodic review:</strong> each item has a review interval (30 days by default). Due for Review lists items
+          past their date; ordering or marking an item reviewed moves the date forward.</li>
+        <li><strong>MRP:</strong> boards first. Gross need = sales forecast + open sales orders; net = gross − boards on hand −
+          open production orders. Boards to build × the bill of materials = the parts needed that week, plus part sales
+          and custom builds. Net parts = need − parts on hand − open purchase orders.
+          Order by = the week's start − the supplier's lead time.</li>
+        <li><strong>P&amp;L:</strong> revenue − refunds = net sales; − cost of goods sold (less cost returned) = gross profit;
+          − production scrap − returned goods written off − stock count losses = profit. Sales tax is collected for the state, so it is not revenue.</li>
+        <li><strong>Inventory turnover</strong> = cost of goods sold ÷ average inventory value over the same period.</li>
+        <li><strong>Production:</strong> final yield = good ÷ started; first-pass yield = (good − reworked) ÷ started;
+          scrap rate = scrapped ÷ started; build time = finish − start.</li>
+        <li><strong>Supplier score</strong> (0–100) = 40% on-time rate + 40% fill score + 20% lead-time score.
+          A (90+) = Keep, B or C (70–89) = Watch, D or F (below 70) = Replace.</li>
+      </ul>
+      <p class="muted">The numbers in this section are read from the <a href="settings.html">Settings</a> page, so they always show the values in use.</p>
+    </div>
+
+    <div class="panel prose">
+      <h2>Security and multiple users</h2>
+      <ul>
+        <li>Everyone signs in with an email and password. Staff logins see the ERP; customer logins see only the shop.</li>
+        <li>The database itself enforces this (row-level security), not just the web pages. A customer can never read costs,
+          other customers' orders or staff screens, even by changing the web address.</li>
+        <li>Changes are broadcast in real time: when one person sells, receives or builds, every other open screen refreshes.</li>
+      </ul>
+    </div>
+
+    <div class="panel prose">
+      <h2>Simplifications we chose</h2>
+      <ul>
+        <li>No accounting ledger: the P&amp;L is calculated from sales, returns, production and stock records. No operating expenses (rent, wages).</li>
+        <li>Transfers between locations arrive immediately. Customers pay at pickup; payment is not recorded.</li>
+        <li>Stock is not reserved for open orders; it is taken when the order is fulfilled.</li>
+        <li>MRP plans each week exactly what is short (lot-for-lot), without safety stock.</li>
+        <li>The year of history is generated by a script with realistic seasonality, events and supplier behaviour, written through the same ledger as live transactions.</li>
+      </ul>
     </div>
 
     <div class="panel prose">
       <h2>How it was built</h2>
       <ul>
         <li><strong>AI tools:</strong> the code and database design were written with Claude Code (Anthropic), directed and reviewed by the team from a written specification.</li>
-        <li><strong>Database, logins and realtime:</strong> Supabase (a hosted PostgreSQL database). Business rules such as posting a sale or receiving a purchase order run inside the database as functions, so each transaction fully happens or not at all.</li>
+        <li><strong>Database, logins and realtime:</strong> Supabase (a hosted PostgreSQL database).</li>
         <li><strong>Front end:</strong> plain HTML, CSS and JavaScript with no framework and no build step.</li>
-        <li><strong>Hosting:</strong> GitHub Pages, served from a public GitHub repository.</li>
-      </ul>
-    </div>
-
-    <div class="panel prose">
-      <h2>How the numbers work</h2>
-      <ul>
-        <li><strong>One inventory ledger.</strong> Every sale, receipt, transfer, build, return and adjustment is a row in a single movements table. On-hand quantity is the sum of that ledger.</li>
-        <li><strong>Everything is calculated.</strong> Costs, totals and metrics are computed from stored transactions, so changing an input changes every result that depends on it.</li>
-        <li><strong>Weighted average cost.</strong> Each item's cost is re-averaged every time stock is received. A complete board's cost is rolled up from its components.</li>
-        <li><strong>Security.</strong> Database row-level security decides what each login can read or change.</li>
+        <li><strong>Hosting:</strong> GitHub Pages, from a public GitHub repository.</li>
       </ul>
     </div>
   </div>
@@ -37,6 +116,19 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>
-  <script>WBC.initPage('About this system');</script>
+  <script>
+    (async () => {
+      const me = await WBC.initPage('About this system');
+      if (!me) return;
+      // Fill the formula section with the settings actually in use.
+      const { data } = await WBC.sb.from('settings').select('key, value');
+      const values = new Map((data || []).map((s) => [s.key, Number(s.value)]));
+      document.querySelectorAll('[data-setting]').forEach((el) => {
+        const value = values.get(el.dataset.setting);
+        if (value === undefined) return;
+        el.textContent = el.hasAttribute('data-percent') ? Math.round(value * 100) + '%' : String(value);
+      });
+    })();
+  </script>
 </body>
 </html>

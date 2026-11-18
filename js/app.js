@@ -21,6 +21,7 @@ const WBC = (() => {
     { group: 'Stock', links: [
       { href: 'inventory.html', label: 'Inventory', built: true },
       { href: 'items.html', label: 'Items & BOMs', built: true },
+      { href: 'labels.html', label: 'Barcode labels', built: true },
     ]},
     { group: 'Buy', links: [
       { href: 'purchasing.html', label: 'Purchasing', built: true },

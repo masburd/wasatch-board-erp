@@ -12,14 +12,14 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Steps 1–7 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, Point of Sale, About.
 - **Step 5 (POS) done and live:** test sale confirmed. On 2026-11-17 the user confirmed the phone camera opens and shows the picture; reading a real barcode is still unverified (planned with the step 12 printed labels).
 - **Step 6 (sales orders, returns, exchanges) pushed and live.** `sql/08` is in the database (checked from the live site on 2026-11-16: `returns`, `return_lines` and `open_order_lines` all answer). Mason thinks he ran the two tests but was not sure; the expected numbers are in PLAN.md → "Open issues / to-do" if anything looks off.
-- All code through step 6 is committed and pushed (last code commit "Step 6: sales orders and returns"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
+- All code through step 11 is committed and pushed (user pushed 2026-11-17).
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
 - **Step 7 (production orders and metrics) done and live:** `sql/09` run, test confirmed by the user on 2026-11-16.
 - **Step 8 (history generator) done:** `sql/10_history.sql` run and confirmed by the user on 2026-11-16. Re-running it erases and rebuilds all transactions.
 - **Step 9 (planning) done and live:** `sql/11` run, confirmed by the user on 2026-11-16.
 - **Step 10 (financials and reports) done and live:** `sql/12` run, confirmed by the user on 2026-11-16.
 - **Weekly MRP (SPEC capability 8) done and live:** `sql/13` run, confirmed by the user on 2026-11-16.
-- **Step 11 (customer portal and Build Your Own Board) built and committed, not yet live or confirmed:** `sql/14_portal.sql`, `portal.html`, `signup.html`; `sql/11` and `sql/13` were edited (new `planned_job_parts` view) and must be re-run before `sql/14`. Pages tested locally with the fake database only; the SQL has never been run. The user must also turn off "Confirm email" in Supabase Auth to sign up demo customers with made-up emails.
+- **Step 11 (customer portal and Build Your Own Board) live:** `sql/11` and `sql/13` re-run, `sql/14` run, "Confirm email" turned off in Supabase Auth, and everything pushed (user confirmed 2026-11-17). The step 11 test is still waiting for the team test session.
 - **Next to build:** step 12, barcode labels, About page polish, demo rehearsal.
 
 ### SQL files and whether they have been run in Supabase
@@ -36,10 +36,10 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 8 | `sql/08_sales_orders_returns.sql` | Yes (tables and view confirmed present 2026-11-16) |
 | 9 | `sql/09_production.sql` | Yes |
 | 10 | `sql/10_history.sql` | Yes. Erases and rebuilds all transactions each time it is run. |
-| 11 | `sql/11_planning.sql` | Yes, but **edited in step 11: must be re-run** (not confirmed) |
+| 11 | `sql/11_planning.sql` | Yes (re-run after the step 11 edit) |
 | 12 | `sql/12_financials_reports.sql` | Yes |
-| 13 | `sql/13_mrp_weekly.sql` | Yes, but **edited in step 11: must be re-run after 11** (not confirmed) |
-| 14 | `sql/14_portal.sql` | **Not confirmed** — ask the user |
+| 13 | `sql/13_mrp_weekly.sql` | Yes (re-run after the step 11 edit) |
+| 14 | `sql/14_portal.sql` | Yes |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 

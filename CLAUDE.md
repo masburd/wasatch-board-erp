@@ -10,7 +10,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 - **Live site:** https://masburd.github.io/wasatch-board-erp/ — GitHub repo `masburd/wasatch-board-erp` (public), Pages serves `main` / root.
 - **Supabase project URL** and publishable key are in `js/config.js`.
 - **Steps 1–7 done and live:** login, navigation, dashboard, Items & BOMs, Inventory, Suppliers, Purchasing, Point of Sale, About.
-- **Step 5 (POS) done and live:** test sale confirmed. The phone camera test was skipped by the user for now; camera scanning with a real camera is still unverified.
+- **Step 5 (POS) done and live:** test sale confirmed. On 2026-11-17 the user confirmed the phone camera opens and shows the picture; reading a real barcode is still unverified (planned with the step 12 printed labels).
 - **Step 6 (sales orders, returns, exchanges) pushed and live.** `sql/08` is in the database (checked from the live site on 2026-11-16: `returns`, `return_lines` and `open_order_lines` all answer). Mason thinks he ran the two tests but was not sure; the expected numbers are in PLAN.md → "Open issues / to-do" if anything looks off.
 - All code through step 6 is committed and pushed (last code commit "Step 6: sales orders and returns"). Only note edits to PLAN.md / CLAUDE.md may be uncommitted.
 - Time pressure: demo is Dec 2. Remaining: step 7 production, 8 history generator, 9 planning (ROP, EOQ, review, MRP, scorecard), 10 financials and reports, 11 customer portal and configurator, 12 labels and rehearsal. The user has a usage limit per session, so keep each session to one or two steps and update these notes before stopping.
@@ -93,6 +93,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 
 ### How the user works
 
+- From step 7 on, Mason runs the SQL files as each step is built but leaves the "Try it" tests for one combined session with teammates at the end. Keep every step's test in PLAN.md → "Open issues / to-do" until he reports it done; do not delete them when a step's SQL is confirmed.
 - Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.
 - Teammate logins: Mason ran his own query in the Supabase SQL Editor (not saved in this repo) to give all teammates a login. He confirmed they can sign in and are marked `staff`.
 - Mason is new to Supabase, git and GitHub. He publishes with **GitHub Desktop** (commit, then Push origin); the command line here has no GitHub login, so `git push` fails. Do not ask him to use terminal git.

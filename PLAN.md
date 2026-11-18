@@ -178,12 +178,12 @@ Try it, part 2 (return and exchange):
 
 ### Skipped for now
 
-- **Phone camera test** (step 5). To do it later: open the live site on a phone, sign in, Point of Sale → **Use camera**, allow camera access, and point it at any barcode you have to hand (a cereal box, a book, a drink bottle). It should say "Nothing matches", which proves the camera reads. Our own printable labels come in step 12.
+- **Phone camera test** (step 5). The camera opens and shows the picture on a phone (confirmed 2026-11-17). Still to do: point it at a real barcode. Any product barcode should say "Nothing matches"; a printed label from step 12 should add the item.
 
 ### Not verified yet
 
 - Step 6 test numbers (refund $176.96, write-off $79.25) were not confirmed by the user.
-- Camera scanning with a real camera (see above).
+- Camera reading a real barcode (the camera itself opens; see above).
 - Realtime has not been tested with two real browsers on any page.
 - USB barcode scanner: only tested with typed input + Enter, not a physical scanner.
 - Receipt printing has not been tried on a real printer.

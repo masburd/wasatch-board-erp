@@ -10,7 +10,7 @@ A walk-through that touches all 12 required capabilities, about 20 minutes. Rehe
   - **Laptop B (staff):** a second staff login, to show realtime.
   - **Phone or laptop C (customer):** a customer account made on the sign-up page, home store Provo.
 - [ ] Check stock: Inventory shows the ledger check passing, and Provo has at least 1 Street Complete (`WBC-2001`), 1 Skate Tool (`WBC-1603`) and 1 Helmet (`WBC-1602`). Transfer some from Orem if not.
-- [ ] Optional reset to a clean year: run `sql/10_history.sql` in Supabase. **This erases every transaction typed in since**, including test orders. Do it the evening before, not on the day.
+- [ ] **Refresh the history on the evening of Dec 1:** run `sql/10_history.sql` in Supabase. The year of history then runs up to Nov 30 (including Black Friday), and every test order is wiped. It erases **every** transaction, so do this only after all testing is finished. Items, prices, suppliers, customers, settings, logins and the test checklist results are kept. Afterwards check the ledger (Inventory) and that the two open sales orders and the planned production order are there.
 - [ ] Open every page once on Laptop A so nothing is slow the first time.
 - [ ] Know the backup: if the scanner fails, type the SKU into the scan box and press Enter; if the camera fails, the USB scanner or typing does the same thing.
 

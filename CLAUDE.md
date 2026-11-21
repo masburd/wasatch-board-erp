@@ -54,6 +54,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 - Return reason "Damaged in transit" is set to not restock, like "Defective".
 - Review interval defaults to 30 days per item.
 - Master data is staff-only. Customers never read tables directly (except `inventory_levels`, which any signed-in user may read so stock is live): the portal uses `security definer` functions named `portal_*` that return no cost columns and only the caller's own orders.
+- Plan agreed 2026-11-21: test on the current data, then re-run `sql/10_history.sql` on the evening of Dec 1 so the history reaches Nov 30 and test transactions are gone. It does not touch `test_results`, customers or logins.
 - `sql/05` starter stock is temporary; `sql/10` erases it and posts real opening balances.
 - PO statuses: draft → sent ("Order Sent") → received → closed, or cancelled. A PO becomes received when every line is complete or the user ticks "close short"; marking it paid closes it. A PO has no location; the location is chosen on each receipt.
 - Business dates use Mountain time via `wbc_today()`. Backdated receipts post their ledger row at noon on that date.

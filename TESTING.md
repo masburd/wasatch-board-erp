@@ -42,6 +42,7 @@ Tax is 7.25%. Prices used below: Street Complete 8.0" (`WBC-2001`) $140, Pro Com
 - [ ] **B6a. Add a part.** Items & BOMs → **Add part**: SKU `WBC-1801`, category Accessory, name "Test Wax", supplier GripLine Accessories (lead time fills in as 5), price $8.00, quoted cost $3.00 → Save. It appears in the list with Cost $3.00 and margin 62.5%. Try adding another part with SKU `WBC-1001`: refused, "That SKU is already used".
 - [ ] **B6b. It is used everywhere.** Purchasing → New PO → GripLine: Test Wax is listed at $3.00. Barcode labels lists it. Point of Sale finds it by typing `WBC-1801` (it has no stock yet, so it cannot be sold until a PO is received).
 - [ ] **B6c. Change supplier and retire.** Edit Test Wax → change supplier to Beehive Packaging → Save: the Supplier column changes. Edit it again → untick **Active** → Save: it shows "retired" in grey and disappears from Purchasing, POS, the shop and planning.
+- [ ] **B6d. Delete.** Edit Test Wax → **Delete item** → OK: it is gone from the list (it was never bought or sold). Edit Street Deck 8.0" → **Delete item**: refused with "This item has history … retire it instead", and nothing changes.
 - [ ] **B7. Settings.** Every setting has a plain-language "Where it is used" note. (Changing them is tested in J.)
 
 ## C. Inventory and the ledger

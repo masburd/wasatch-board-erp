@@ -67,6 +67,7 @@
       <p class="muted" id="f-cost-note">Quoted cost is the default price on a new purchase order. The cost column in the list is the weighted average, which only changes when stock is received.</p>
       <p class="error-text" id="edit-error" role="alert"></p>
       <div class="form-actions">
+        <button type="button" class="btn" id="edit-delete" style="margin-right:auto">Delete item</button>
         <button type="button" class="btn" id="edit-cancel">Cancel</button>
         <button type="submit" class="btn primary" id="edit-save">Save</button>
       </div>
@@ -214,6 +215,7 @@
         ['f-sku-wrap', 'f-category-wrap', 'f-supplier-wrap', 'f-cost-wrap', 'f-lead-wrap', 'f-cost-note', 'f-add-note']
           .forEach((id) => { field(id).hidden = false; });
         field('f-active-wrap').hidden = true;
+        field('edit-delete').hidden = true;
         field('edit-error').textContent = '';
         dialog.showModal();
         field('f-sku').focus();
@@ -236,6 +238,7 @@
         field('f-category-wrap').hidden = true;
         field('f-add-note').hidden = true;
         field('f-active-wrap').hidden = false;
+        field('edit-delete').hidden = false;
         field('f-active').checked = item.is_active;
         field('f-supplier-wrap').hidden = !isPart;
         field('f-supplier').innerHTML = supplierOptions(item.supplier_id);
@@ -254,6 +257,30 @@
       }
 
       field('edit-cancel').addEventListener('click', () => dialog.close());
+
+      // Delete only works for an item that has never been used. Once an item
+      // has been bought, sold, built or counted, the database refuses, because
+      // deleting it would rewrite history (old sales, the ledger, the P&L).
+      // Such an item is retired instead with the Active tick box.
+      field('edit-delete').addEventListener('click', async () => {
+        const item = items.find((i) => i.id === editingId);
+        if (!item || !window.confirm('Delete ' + item.sku + ' · ' + item.name + ' for good? This cannot be undone.')) return;
+        // .select() returns the rows actually deleted, so a refusal can never look like success.
+        const { data: deleted, error } = await sb.from('items').delete().eq('id', editingId).select('id');
+        if (!error && !(deleted && deleted.length)) {
+          field('edit-error').textContent = 'The item was not deleted. Untick Active and Save to retire it instead.';
+          return;
+        }
+        if (error) {
+          field('edit-error').textContent = error.code === '23503'
+            ? 'This item has history (purchase orders, sales, stock movements or a bill of materials), so it cannot be deleted. Untick Active and Save to retire it instead.'
+            : error.message;
+          return;
+        }
+        dialog.close();
+        toast(item.sku + ' deleted.');
+        await load();
+      });
 
       field('edit-form').addEventListener('submit', async (event) => {
         event.preventDefault();

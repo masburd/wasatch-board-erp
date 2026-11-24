@@ -17,6 +17,7 @@
           <option value="complete">Complete boards</option>
         </select>
         <span class="muted" id="row-count"></span>
+        <button class="btn primary" id="add-btn" style="margin-left:auto">Add part</button>
       </div>
       <div class="table-wrap"><table>
         <thead><tr>
@@ -47,12 +48,22 @@
     <h2 id="edit-title">Edit item</h2>
     <form id="edit-form">
       <div class="form-grid">
+        <label id="f-sku-wrap">SKU (also the barcode) <input id="f-sku" maxlength="20" placeholder="WBC-1801"></label>
+        <label id="f-category-wrap">Category <select id="f-category">
+          <option value="deck">Deck</option><option value="trucks">Trucks</option><option value="wheels">Wheels</option>
+          <option value="bearings">Bearings</option><option value="hardware">Hardware</option><option value="grip">Grip tape</option>
+          <option value="accessory">Accessory</option><option value="packaging">Packaging</option>
+        </select></label>
         <label class="wide">Name <input id="f-name" required></label>
+        <label class="wide" id="f-supplier-wrap">Supplier <select id="f-supplier"></select></label>
         <label>Price ($) <input id="f-price" type="number" min="0" step="0.01"></label>
         <label id="f-cost-wrap">Supplier quoted cost ($) <input id="f-cost" type="number" min="0" step="0.01"></label>
         <label id="f-lead-wrap">Lead time (days) <input id="f-lead" type="number" min="0" step="1"></label>
         <label>Review every (days) <input id="f-review" type="number" min="1" step="1" required></label>
       </div>
+      <label class="check-row" id="f-active-wrap"><input type="checkbox" id="f-active">
+        Active (untick to retire the item: it disappears from selling, buying and planning, but its history is kept)</label>
+      <p class="muted" id="f-add-note">A new part starts with no stock and an average cost equal to the quoted cost. Buy it with a purchase order to get stock. It appears at the Point of Sale, in the shop and in planning straight away.</p>
       <p class="muted" id="f-cost-note">Quoted cost is the default price on a new purchase order. The cost column in the list is the weighted average, which only changes when stock is received.</p>
       <p class="error-text" id="edit-error" role="alert"></p>
       <div class="form-actions">
@@ -75,13 +86,14 @@
       let costs = new Map(); // item id -> current cost, from the item_costs view
       let bomLines = [];     // rows from bom_lines
       let selectedId = null; // the complete board whose BOM is open
-      let editingId = null;
+      let editingId = null;   // null while adding a new part
+      let suppliers = [];
 
       // Read everything this page shows. Costs come from the database view,
       // so the page never does its own cost arithmetic for the list.
       async function load() {
         const [itemsRes, costsRes, bomRes] = await Promise.all([
-          sb.from('items').select('*, suppliers(name)').eq('is_active', true).order('sku'),
+          sb.from('items').select('*, suppliers(name)').order('sku'),
           sb.from('item_costs').select('item_id, current_cost'),
           sb.from('bom_lines').select('*').order('id'),
         ]);
@@ -108,9 +120,9 @@
           const margin = hasBoth ? (i.price - cost) / i.price : null;
           const isComplete = i.item_type === 'complete';
           return `
-            <tr data-id="${i.id}" class="${isComplete ? 'clickable' : ''} ${i.id === selectedId ? 'selected' : ''}">
+            <tr data-id="${i.id}" class="${isComplete ? 'clickable' : ''} ${i.id === selectedId ? 'selected' : ''} ${i.is_active ? '' : 'inactive'}">
               <td>${esc(i.sku)}</td>
-              <td>${esc(i.name)}</td>
+              <td>${esc(i.name)}${i.is_active ? '' : ' <span class="tag">retired</span>'}</td>
               <td><span class="tag ${esc(i.item_type)}">${esc(i.item_type)}</span></td>
               <td>${i.suppliers ? esc(i.suppliers.name) : '<span class="muted">Made in-house</span>'}</td>
               <td class="num">${i.lead_time_days === null ? '—' : esc(i.lead_time_days) + ' d'}</td>
@@ -182,11 +194,51 @@
       const field = (id) => document.getElementById(id);
       const numberOrNull = (value) => (value === '' ? null : Number(value));
 
-      function openEdit(id) {
+      function supplierOptions(selectedId) {
+        return suppliers.filter((s) => s.is_active || s.id === selectedId).map((s) =>
+          `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+      }
+
+      // Adding uses the same form, with SKU, category and supplier boxes shown
+      // and the lead time filled in from the supplier's quoted lead time.
+      async function openAdd() {
+        const { data, error } = await sb.from('suppliers').select('*').order('name');
+        if (error) { toast(error.message, true); return; }
+        suppliers = data;
+        editingId = null;
+        field('edit-title').textContent = 'Add part';
+        ['f-sku', 'f-name', 'f-price', 'f-cost', 'f-lead'].forEach((id) => { field(id).value = ''; });
+        field('f-review').value = 30;
+        field('f-supplier').innerHTML = supplierOptions(null);
+        field('f-lead').value = (suppliers.find((s) => s.id === Number(field('f-supplier').value)) || {}).quoted_lead_time_days ?? '';
+        ['f-sku-wrap', 'f-category-wrap', 'f-supplier-wrap', 'f-cost-wrap', 'f-lead-wrap', 'f-cost-note', 'f-add-note']
+          .forEach((id) => { field(id).hidden = false; });
+        field('f-active-wrap').hidden = true;
+        field('edit-error').textContent = '';
+        dialog.showModal();
+        field('f-sku').focus();
+      }
+      field('add-btn').addEventListener('click', openAdd);
+      field('f-supplier').addEventListener('change', () => {
+        if (editingId !== null) return;
+        const s = suppliers.find((x) => x.id === Number(field('f-supplier').value));
+        if (s) field('f-lead').value = s.quoted_lead_time_days;
+      });
+
+      async function openEdit(id) {
         const item = items.find((i) => i.id === id);
         if (!item) return;
+        const { data } = await sb.from('suppliers').select('*').order('name');
+        suppliers = data || [];
         editingId = id;
         const isPart = item.item_type === 'part';
+        field('f-sku-wrap').hidden = true;
+        field('f-category-wrap').hidden = true;
+        field('f-add-note').hidden = true;
+        field('f-active-wrap').hidden = false;
+        field('f-active').checked = item.is_active;
+        field('f-supplier-wrap').hidden = !isPart;
+        field('f-supplier').innerHTML = supplierOptions(item.supplier_id);
         field('edit-title').textContent = 'Edit ' + item.sku;
         field('f-name').value = item.name;
         field('f-price').value = item.price ?? '';
@@ -205,7 +257,8 @@
 
       field('edit-form').addEventListener('submit', async (event) => {
         event.preventDefault();
-        const item = items.find((i) => i.id === editingId);
+        const adding = editingId === null;
+        const item = adding ? { item_type: 'part' } : items.find((i) => i.id === editingId);
         const changes = {
           name: field('f-name').value.trim(),
           price: numberOrNull(field('f-price').value),
@@ -214,13 +267,34 @@
         if (item.item_type === 'part') {
           changes.standard_cost = numberOrNull(field('f-cost').value);
           changes.lead_time_days = numberOrNull(field('f-lead').value);
+          changes.supplier_id = Number(field('f-supplier').value) || null;
+        }
+
+        let request;
+        if (adding) {
+          const sku = field('f-sku').value.trim().toUpperCase();
+          if (!sku) { field('edit-error').textContent = 'Enter a SKU.'; return; }
+          if (changes.standard_cost === null || changes.price === null) {
+            field('edit-error').textContent = 'Enter both the price and the supplier quoted cost.'; return;
+          }
+          // The SKU is also the barcode value printed on labels.
+          // Average cost is set by the database to the quoted cost.
+          request = sb.from('items').insert({
+            ...changes, sku, barcode: sku, item_type: 'part', category: field('f-category').value,
+          });
+        } else {
+          changes.is_active = field('f-active').checked;
+          request = sb.from('items').update(changes).eq('id', editingId);
         }
         field('edit-save').disabled = true;
-        const { error } = await sb.from('items').update(changes).eq('id', editingId);
+        const { error } = await request;
         field('edit-save').disabled = false;
-        if (error) { field('edit-error').textContent = error.message; return; }
+        if (error) {
+          field('edit-error').textContent = error.code === '23505' ? 'That SKU is already used by another item.' : error.message;
+          return;
+        }
         dialog.close();
-        toast('Item saved.');
+        toast(adding ? 'Part added.' : 'Item saved.');
         await load();
       });
 

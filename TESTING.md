@@ -39,6 +39,9 @@ Tax is 7.25%. Prices used below: Street Complete 8.0" (`WBC-2001`) $140, Pro Com
 - [ ] **B4.** Change a BOM quantity (Street Complete: grip tape 1 → 2). The board's rolled-up cost goes up by one grip tape's cost. **Change it back to 1.**
 - [ ] **B5. Average cost cannot be typed in.** Click **Edit** on Skate Tool. The form has Price, Supplier quoted cost, Lead time and Review every, but no box for the average cost (the "Cost" column). Change **Supplier quoted cost** from $5.00 to $6.00 and Save: the Cost column does **not** change, because average cost only moves when stock is received. Purchasing → New purchase order → GripLine Accessories: the Skate Tool's unit cost now starts at $6.00 (close the form without saving). **Change the quoted cost back to $5.00.**
 - [ ] **B6. Suppliers.** Add a test supplier, edit its phone number, deactivate it, then delete it. Try deleting Timberline Deck Works: it is refused because items use it.
+- [ ] **B6a. Add a part.** Items & BOMs → **Add part**: SKU `WBC-1801`, category Accessory, name "Test Wax", supplier GripLine Accessories (lead time fills in as 5), price $8.00, quoted cost $3.00 → Save. It appears in the list with Cost $3.00 and margin 62.5%. Try adding another part with SKU `WBC-1001`: refused, "That SKU is already used".
+- [ ] **B6b. It is used everywhere.** Purchasing → New PO → GripLine: Test Wax is listed at $3.00. Barcode labels lists it. Point of Sale finds it by typing `WBC-1801` (it has no stock yet, so it cannot be sold until a PO is received).
+- [ ] **B6c. Change supplier and retire.** Edit Test Wax → change supplier to Beehive Packaging → Save: the Supplier column changes. Edit it again → untick **Active** → Save: it shows "retired" in grey and disappears from Purchasing, POS, the shop and planning.
 - [ ] **B7. Settings.** Every setting has a plain-language "Where it is used" note. (Changing them is tested in J.)
 
 ## C. Inventory and the ledger

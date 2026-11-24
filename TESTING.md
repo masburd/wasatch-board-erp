@@ -37,7 +37,7 @@ Tax is 7.25%. Prices used below: Street Complete 8.0" (`WBC-2001`) $140, Pro Com
 - [ ] **B2.** Open the Street Complete 8.0" BOM: 7 components, 1 each. Cost = the sum of the Extended cost column.
 - [ ] **B3.** Edit a part's **price**: change Skate Tool from $15 to $16 and Save. The Margin column changes. At Point of Sale, the Skate Tool now rings up at $16. **Change it back to $15.**
 - [ ] **B4.** Change a BOM quantity (Street Complete: grip tape 1 → 2). The board's rolled-up cost goes up by one grip tape's cost. **Change it back to 1.**
-- [ ] **B5.** The browser cannot change average cost: the item edit form has no field for it.
+- [ ] **B5. Average cost cannot be typed in.** Click **Edit** on Skate Tool. The form has Price, Supplier quoted cost, Lead time and Review every, but no box for the average cost (the "Cost" column). Change **Supplier quoted cost** from $5.00 to $6.00 and Save: the Cost column does **not** change, because average cost only moves when stock is received. Purchasing → New purchase order → GripLine Accessories: the Skate Tool's unit cost now starts at $6.00 (close the form without saving). **Change the quoted cost back to $5.00.**
 - [ ] **B6. Suppliers.** Add a test supplier, edit its phone number, deactivate it, then delete it. Try deleting Timberline Deck Works: it is refused because items use it.
 - [ ] **B7. Settings.** Every setting has a plain-language "Where it is used" note. (Changing them is tested in J.)
 

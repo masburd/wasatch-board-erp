@@ -66,7 +66,7 @@ Tax is 7.25%. Prices used below: Street Complete 8.0" (`WBC-2001`) $140, Pro Com
 - [ ] **D2.** Test a label with the **USB scanner**: "Found: WBC-…".
 - [ ] **D3.** Test a label with the **phone camera** (Use camera): same result.
 - [ ] **D4.** Scan a product barcode from home (a cereal box): "does not match any item".
-- [ ] **D5.** A scan into Point of Sale, Inventory → Adjust, and a Purchasing receipt all pick up the item.
+- [ ] **D5.** A scan into Point of Sale, Inventory → Adjust, and a Purchasing receipt all pick up the item. For the receipt: Purchasing → open a PO whose status is **Order Sent** (make and send one if there is none) → the scan box is in the **Receive stock** box at the bottom. Scan a label for an item on that PO: its "Receive now" box goes up by 1. Do not click Receive unless you want the stock.
 
 ## E. Point of Sale
 

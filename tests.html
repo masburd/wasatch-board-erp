@@ -115,6 +115,12 @@
         return results.has(id) ? list.slice(0, -1) : list;
       }
       const everFailed = (id) => (history.get(id) || []).some((h) => h.status === 'fail');
+      // True when this entry only changed the note: the entry before it had the same status.
+      function noteEdit(id, h) {
+        const list = history.get(id) || [];
+        const i = list.indexOf(h);
+        return i > 0 && list[i - 1].status === h.status;
+      }
       const LABEL = { pass: 'Passed', fail: 'Failed', cleared: 'Cleared' };
 
       function render() {
@@ -153,7 +159,7 @@
                     ${earlier(t.id).length ? `<div class="test-history">
                       <div class="muted" style="font-size:12px">Earlier:</div>
                       ${earlier(t.id).map((h) => `<div class="test-history-row hist-${esc(h.status)}">
-                        <strong>${LABEL[h.status]}</strong> · ${esc(h.tester_name || '')} · ${esc(dateTime(h.changed_at))}${h.note ? ` — ${esc(h.note)}` : ''}
+                        <strong>${LABEL[h.status]}${noteEdit(t.id, h) ? ' (note changed)' : ''}</strong> · ${esc(h.tester_name || '')} · ${esc(dateTime(h.changed_at))}${h.note ? ` — ${esc(h.note)}` : ''}
                       </div>`).join('')}
                     </div>` : ''}
                   </td>
@@ -202,9 +208,17 @@
       });
 
       // Editing the note of a test that is already marked saves when you leave the box.
+      // If you leave the box by clicking Pass/Fail/Clear on the same test, the button
+      // saves the note instead, so the change is not recorded twice.
+      let buttonPressedIn = null;
+      $('sections').addEventListener('pointerdown', (event) => {
+        const row = event.target.closest('button') && event.target.closest('[data-test]');
+        buttonPressedIn = row ? row.dataset.test : null;
+      });
       $('sections').addEventListener('change', async (event) => {
         if (!event.target.classList.contains('t-note')) return;
         const row = event.target.closest('[data-test]');
+        if (buttonPressedIn === row.dataset.test) return;
         const r = results.get(row.dataset.test);
         if (r) await save(r.test_id, r.status, event.target.value.trim());
       });

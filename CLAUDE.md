@@ -42,7 +42,7 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 14 | `sql/14_portal.sql` | Yes |
 | 15 | `sql/15_test_checklist.sql` | Yes (the checklist saves results) |
 | 16 | `sql/16_test_history.sql` | Yes (user saw history on 2026-11-25) |
-| 17 | `sql/17_test_history_simple.sql` | **Not yet** — replaces the history trigger and tidies old lines |
+| 17 | `sql/17_test_history_simple.sql` | Yes (2026-11-25) |
 | 18 | `sql/18_financials_speed.sql` | Yes (2026-11-25; Financials loads now). pnl and inventory_turnover are security definer with a staff check inside |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.

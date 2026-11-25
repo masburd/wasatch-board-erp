@@ -17,13 +17,15 @@
             <option value="todo">Not tested yet</option>
             <option value="fail">Failed</option>
             <option value="pass">Passed</option>
+            <option value="fixed">Failed before, now passed</option>
           </select>
         </div>
       </div>
       <div class="cards" id="summary"></div>
       <p class="muted" style="margin:0">The tests are read from <a href="TESTING.md">TESTING.md</a>. Click Pass or Fail on each one;
         results are saved for the whole team and appear on everyone's screen. For a failure, write what happened and
-        the exact message in the note, then paste it to Claude Code with the test number.</p>
+        the exact message in the note, then paste it to Claude Code with the test number. Earlier results are kept:
+        a test that failed and was fixed shows the failure under it.</p>
     </div>
     <div id="sections"><div class="panel"><p class="muted">Loading the tests…</p></div></div>
   </div>
@@ -80,28 +82,55 @@
 
       // ---------------- results (shared) ----------------
       let results = new Map();   // test id -> row from test_results
+      let history = new Map();   // test id -> earlier rows from test_result_history, oldest first
+      let historyWarned = false;
 
       async function loadResults() {
-        const { data, error } = await sb.from('test_results').select('*');
-        if (error) {
-          toast(error.message + ' — has sql/15_test_checklist.sql been run?', true);
+        const [res, hist] = await Promise.all([
+          sb.from('test_results').select('*'),
+          sb.from('test_result_history').select('*').order('changed_at').order('id'),
+        ]);
+        if (res.error) {
+          toast(res.error.message + ' — has sql/15_test_checklist.sql been run?', true);
           return;
         }
-        results = new Map(data.map((r) => [r.test_id, r]));
+        results = new Map(res.data.map((r) => [r.test_id, r]));
+        history = new Map();
+        if (hist.error) {
+          if (!historyWarned) toast('History not available — has sql/16_test_history.sql been run?', true);
+          historyWarned = true;
+        } else {
+          hist.data.forEach((h) => {
+            if (!history.has(h.test_id)) history.set(h.test_id, []);
+            history.get(h.test_id).push(h);
+          });
+        }
         render();
       }
+
+      // The earlier entries: everything except the newest one, which is the
+      // result shown now (unless the test was cleared and not marked again).
+      function earlier(id) {
+        const list = history.get(id) || [];
+        return results.has(id) ? list.slice(0, -1) : list;
+      }
+      const everFailed = (id) => (history.get(id) || []).some((h) => h.status === 'fail');
+      const LABEL = { pass: 'Passed', fail: 'Failed', cleared: 'Cleared' };
 
       function render() {
         const all = sections.flatMap((s) => s.tests);
         const count = (status) => all.filter((t) => (results.get(t.id) || {}).status === status).length;
         const passed = count('pass'), failed = count('fail');
+        const fixed = all.filter((t) => (results.get(t.id) || {}).status === 'pass' && everFailed(t.id)).length;
         $('summary').innerHTML = [
-          [all.length, 'Tests'], [passed, 'Passed'], [failed, 'Failed'], [all.length - passed - failed, 'Not tested yet'],
+          [all.length, 'Tests'], [passed, 'Passed'], [failed, 'Failed'], [fixed, 'Failed before, now passed'],
+          [all.length - passed - failed, 'Not tested yet'],
         ].map(([n, label]) => `<div class="card"><div class="num">${n}</div><div class="lbl">${label}</div></div>`).join('');
 
         const filter = $('filter').value;
         const show = (t) => {
           const status = (results.get(t.id) || {}).status;
+          if (filter === 'fixed') return status === 'pass' && everFailed(t.id);
           return !filter || (filter === 'todo' ? !status : status === filter);
         };
 
@@ -121,6 +150,12 @@
                     <div class="test-note"><input class="t-note" maxlength="500" placeholder="Note (what happened, exact message)"
                       value="${esc(r.note || '')}" aria-label="Note for ${esc(t.id)}"></div>
                     ${r.status ? `<div class="muted" style="font-size:12px">${r.status === 'pass' ? 'Passed' : 'Failed'} · ${esc(r.tester_name || '')} · ${esc(dateTime(r.updated_at))}</div>` : ''}
+                    ${earlier(t.id).length ? `<div class="test-history">
+                      <div class="muted" style="font-size:12px">Earlier:</div>
+                      ${earlier(t.id).map((h) => `<div class="test-history-row hist-${esc(h.status)}">
+                        <strong>${LABEL[h.status]}</strong> · ${esc(h.tester_name || '')} · ${esc(dateTime(h.changed_at))}${h.note ? ` — ${esc(h.note)}` : ''}
+                      </div>`).join('')}
+                    </div>` : ''}
                   </td>
                   <td class="nowrap">
                     <button class="btn small t-pass ${r.status === 'pass' ? 'primary' : ''}">Pass</button>
@@ -149,7 +184,11 @@
         if (!button) return;
         const row = button.closest('[data-test]');
         const id = row.dataset.test;
-        const note = row.querySelector('.t-note').value.trim();
+        let note = row.querySelector('.t-note').value.trim();
+        // Passing a test that had failed: the failure note stays in the history,
+        // so do not copy it onto the pass (unless it was edited).
+        const current = results.get(id);
+        if (button.classList.contains('t-pass') && current && current.status === 'fail' && note === (current.note || '')) note = '';
         if (button.classList.contains('t-pass')) await save(id, 'pass', note);
         if (button.classList.contains('t-fail')) {
           if (!note) { toast('Write what happened in the note first, then click Fail.', true); row.querySelector('.t-note').focus(); return; }

@@ -250,4 +250,8 @@ tr.week-first td { border-top: 2px solid var(--line); }
 .test-row.test-pass { background: #eef8f3; }
 .test-row.test-fail { background: #fdecea; }
 .test-note input { width: 100%; margin-top: 6px; font-size: 13px; }
+.test-history { margin-top: 6px; padding-left: 8px; border-left: 3px solid #d0d5dd; }
+.test-history-row { font-size: 12px; color: #555; }
+.test-history-row.hist-fail strong { color: #b42318; }
+.test-history-row.hist-pass strong { color: #1e7a4c; }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }

@@ -40,8 +40,9 @@ School project (GSCM 401): a working mini-ERP for a fictional Utah skateboard co
 | 12 | `sql/12_financials_reports.sql` | Yes |
 | 13 | `sql/13_mrp_weekly.sql` | Yes (re-run after the step 11 edit) |
 | 14 | `sql/14_portal.sql` | Yes |
-| 15 | `sql/15_test_checklist.sql` | **Not confirmed** — ask the user |
-| 16 | `sql/16_test_history.sql` | **Not yet** — needs sql/15 first |
+| 15 | `sql/15_test_checklist.sql` | Yes (the checklist saves results) |
+| 16 | `sql/16_test_history.sql` | Yes (user saw history on 2026-11-25) |
+| 17 | `sql/17_test_history_simple.sql` | **Not yet** — replaces the history trigger and tidies old lines |
 
 Keep this table current whenever a SQL file is added or the user confirms a run.
 
@@ -98,7 +99,7 @@ Keep this table current whenever a SQL file is added or the user confirms a run.
 
 ### How the user works
 
-- Test checklist history: a trigger on `test_results` copies every Pass/Fail/note change and every Clear into `test_result_history` (`sql/16`, read-only to the browser). The page shows earlier results under each test and a "Failed before, now passed" filter. Passing a failed test does not copy the failure note onto the pass.
+- Test checklist history (`sql/16` + `sql/17`): one line per result in `test_result_history`, written only by a trigger on `test_results`. A different result adds a line; the same result clicked again with a new note replaces the latest line's note; Clear deletes the result and all its lines (start over). Notes are saved only by the Pass/Fail buttons (no auto-save on typing or leaving the box); the note box is blank after each click. Fail needs a note.
 - `TESTING.md` is the team's full test script (sections A–P). `tests.html` (System → Test checklist) reads it from the site and stores Pass/Fail/notes in the `test_results` table (`sql/15`), shared and realtime. Test lines must keep the form `- [ ] **X1.** …` (optionally `**X1. Title.**`) and sections `## X. Title`, or the page will not see them. Keep it current when a page or rule changes; failures will come back from it by section number (for example "H5 failed").
 - From step 7 on, Mason runs the SQL files as each step is built but leaves the "Try it" tests for one combined session with teammates at the end. Keep every step's test in PLAN.md → "Open issues / to-do" until he reports it done; do not delete them when a step's SQL is confirmed.
 - Working rhythm that has gone well: build one step, test page logic locally with a fake database, hand over numbered Supabase/GitHub steps plus a "Try it" test with expected numbers, wait for "works" before the next step, then update PLAN.md and CLAUDE.md.

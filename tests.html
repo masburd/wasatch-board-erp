@@ -24,8 +24,8 @@
       <div class="cards" id="summary"></div>
       <p class="muted" style="margin:0">The tests are read from <a href="TESTING.md">TESTING.md</a>. Click Pass or Fail on each one;
         results are saved for the whole team and appear on everyone's screen. For a failure, write what happened and
-        the exact message in the note, then paste it to Claude Code with the test number. Earlier results are kept:
-        a test that failed and was fixed shows the failure under it.</p>
+        the exact message in the note, then click Fail. When it is fixed, write how in the note and click Pass: the test
+        then shows both lines. Notes are saved only when you click Pass or Fail. Clear starts a test over.</p>
     </div>
     <div id="sections"><div class="panel"><p class="muted">Loading the tests…</p></div></div>
   </div>
@@ -108,20 +108,15 @@
         render();
       }
 
-      // The earlier entries: everything except the newest one, which is the
-      // result shown now (unless the test was cleared and not marked again).
-      function earlier(id) {
-        const list = history.get(id) || [];
-        return results.has(id) ? list.slice(0, -1) : list;
+      // A test's lines, oldest first: "Failed — why", "Passed — how it was fixed".
+      function linesFor(id) {
+        const list = history.get(id);
+        if (list && list.length) return list;
+        const r = results.get(id);   // no history table yet: show the current result only
+        return r ? [{ status: r.status, note: r.note, tester_name: r.tester_name, changed_at: r.updated_at }] : [];
       }
-      const everFailed = (id) => (history.get(id) || []).some((h) => h.status === 'fail');
-      // True when this entry only changed the note: the entry before it had the same status.
-      function noteEdit(id, h) {
-        const list = history.get(id) || [];
-        const i = list.indexOf(h);
-        return i > 0 && list[i - 1].status === h.status;
-      }
-      const LABEL = { pass: 'Passed', fail: 'Failed', cleared: 'Cleared' };
+      const everFailed = (id) => linesFor(id).some((h) => h.status === 'fail');
+      const LABEL = { pass: 'Passed', fail: 'Failed' };
 
       function render() {
         const all = sections.flatMap((s) => s.tests);
@@ -132,6 +127,10 @@
           [all.length, 'Tests'], [passed, 'Passed'], [failed, 'Failed'], [fixed, 'Failed before, now passed'],
           [all.length - passed - failed, 'Not tested yet'],
         ].map(([n, label]) => `<div class="card"><div class="num">${n}</div><div class="lbl">${label}</div></div>`).join('');
+
+        // Keep anything typed in a note box when the list is redrawn.
+        const typed = new Map([...document.querySelectorAll('[data-test] .t-note')]
+          .filter((el) => el.value).map((el) => [el.closest('[data-test]').dataset.test, el.value]));
 
         const filter = $('filter').value;
         const show = (t) => {
@@ -153,15 +152,13 @@
                 return `<tr data-test="${esc(t.id)}" class="test-row ${r.status ? 'test-' + r.status : ''}">
                   <td class="nowrap"><strong>${esc(t.id)}</strong></td>
                   <td>${inline(t.text)}
-                    <div class="test-note"><input class="t-note" maxlength="500" placeholder="Note (what happened, exact message)"
-                      value="${esc(r.note || '')}" aria-label="Note for ${esc(t.id)}"></div>
-                    ${r.status ? `<div class="muted" style="font-size:12px">${r.status === 'pass' ? 'Passed' : 'Failed'} · ${esc(r.tester_name || '')} · ${esc(dateTime(r.updated_at))}</div>` : ''}
-                    ${earlier(t.id).length ? `<div class="test-history">
-                      <div class="muted" style="font-size:12px">Earlier:</div>
-                      ${earlier(t.id).map((h) => `<div class="test-history-row hist-${esc(h.status)}">
-                        <strong>${LABEL[h.status]}${noteEdit(t.id, h) ? ' (note changed)' : ''}</strong> · ${esc(h.tester_name || '')} · ${esc(dateTime(h.changed_at))}${h.note ? ` — ${esc(h.note)}` : ''}
-                      </div>`).join('')}
+                    ${linesFor(t.id).length ? `<div class="test-history">${linesFor(t.id).map((h) => `
+                      <div class="test-history-row hist-${esc(h.status)}"><strong>${LABEL[h.status] || esc(h.status)}</strong>${h.note ? ` — ${esc(h.note)}` : ''}
+                        <span class="muted">· ${esc(h.tester_name || '')} · ${esc(dateTime(h.changed_at))}</span></div>`).join('')}
                     </div>` : ''}
+                    <div class="test-note"><input class="t-note" maxlength="500" aria-label="Note for ${esc(t.id)}"
+                      value="${esc(typed.get(t.id) || '')}"
+                      placeholder="${r.status === 'fail' ? 'How it was fixed, then click Pass' : 'Note (what happened, exact message)'}"></div>
                   </td>
                   <td class="nowrap">
                     <button class="btn small t-pass ${r.status === 'pass' ? 'primary' : ''}">Pass</button>
@@ -190,38 +187,29 @@
         if (!button) return;
         const row = button.closest('[data-test]');
         const id = row.dataset.test;
-        let note = row.querySelector('.t-note').value.trim();
-        // Passing a test that had failed: the failure note stays in the history,
-        // so do not copy it onto the pass (unless it was edited).
+        const note = row.querySelector('.t-note').value.trim();
         const current = results.get(id);
-        if (button.classList.contains('t-pass') && current && current.status === 'fail' && note === (current.note || '')) note = '';
-        if (button.classList.contains('t-pass')) await save(id, 'pass', note);
-        if (button.classList.contains('t-fail')) {
-          if (!note) { toast('Write what happened in the note first, then click Fail.', true); row.querySelector('.t-note').focus(); return; }
-          await save(id, 'fail', note);
+        const status = button.classList.contains('t-pass') ? 'pass' : button.classList.contains('t-fail') ? 'fail' : null;
+
+        if (status) {
+          if (current && current.status === status) {
+            // Same result again: only a new note changes anything (it replaces the latest line's note).
+            if (!note) { toast(`Already marked ${LABEL[status]}. To change its note, type the new note and click ${LABEL[status] === 'Passed' ? 'Pass' : 'Fail'} again.`); return; }
+          } else if (status === 'fail' && !note) {
+            toast('Write what happened in the note first, then click Fail.', true); row.querySelector('.t-note').focus(); return;
+          }
+          row.querySelector('.t-note').value = '';
+          await save(id, status, note);
         }
         if (button.classList.contains('t-clear')) {
+          if (!confirm(`Start ${id} over? Its result and its history lines are removed.`)) return;
           const { error } = await sb.from('test_results').delete().eq('test_id', id);
           if (error) { toast(error.message, true); return; }
           await loadResults();
         }
       });
 
-      // Editing the note of a test that is already marked saves when you leave the box.
-      // If you leave the box by clicking Pass/Fail/Clear on the same test, the button
-      // saves the note instead, so the change is not recorded twice.
-      let buttonPressedIn = null;
-      $('sections').addEventListener('pointerdown', (event) => {
-        const row = event.target.closest('button') && event.target.closest('[data-test]');
-        buttonPressedIn = row ? row.dataset.test : null;
-      });
-      $('sections').addEventListener('change', async (event) => {
-        if (!event.target.classList.contains('t-note')) return;
-        const row = event.target.closest('[data-test]');
-        if (buttonPressedIn === row.dataset.test) return;
-        const r = results.get(row.dataset.test);
-        if (r) await save(r.test_id, r.status, event.target.value.trim());
-      });
+      // Pressing Enter in a note box does nothing; notes are saved only by Pass or Fail.
 
       $('filter').addEventListener('change', render);
       await loadResults();

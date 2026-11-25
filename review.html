@@ -14,7 +14,7 @@
         <div class="toolbar" style="margin:0">
           <select id="f-show" aria-label="Which items to show">
             <option value="due">Due for review</option>
-            <option value="reorder">At or below reorder point</option>
+            <option value="reorder">Reorder now (on hand + on order ≤ reorder point)</option>
             <option value="all">All items</option>
           </select>
           <select id="f-type" aria-label="Item type">
@@ -51,7 +51,7 @@
     (async () => {
       const me = await WBC.initPage('Due for Review');
       if (!me) return;
-      const { sb, esc, qty, date, dateOf, poNumber, toast, createDraftPOs } = WBC;
+      const { sb, esc, qty, date, dateOf, poNumber, toast, createDraftPOs, openDraftPOs } = WBC;
       const $ = (id) => document.getElementById(id);
 
       let rows = [];             // rows from the item_planning view
@@ -79,8 +79,9 @@
         $('formula-note').textContent =
           `Usage = units sold + units issued to production, averaged over the last ${num(settings.get('usage_window_days'), 0)} days. ` +
           `Safety stock = z × σ × √L (z = ${settings.get('service_level_z')}). Reorder point = d × L + safety stock. ` +
+          `"Reorder now" when on hand + on order ≤ reorder point (stock already on a sent PO counts). ` +
           `EOQ = √(2DS / H), with D = the last 365 days of usage, S = $${settings.get('ordering_cost')} per order and ` +
-          `H = ${num(settings.get('holding_rate') * 100, 0)}% of unit cost. Change these on the Settings page.`;
+          `H = ${num(settings.get('holding_rate') * 100, 0)}% of unit cost. The order quantity is the EOQ rounded up to a whole unit. Change these on the Settings page.`;
         render();
       }
 
@@ -106,10 +107,13 @@
             <td class="num">${esc(r.lead_time_days)} d</td>
             <td class="num">${num(r.safety_stock)}</td>
             <td class="num"><strong>${num(r.reorder_point)}</strong></td>
-            <td class="num">${r.eoq === null ? '—' : num(r.eoq, 0)}</td>
+            <td class="num">${r.eoq === null ? '—' : num(r.eoq, 1)}</td>
             <td class="num">${r.days_of_stock === null ? '—' : num(r.days_of_stock, 0)}</td>
             <td class="nowrap">${r.needs_reorder
-              ? `<span class="bad-text">${isPart ? 'Reorder now' : 'Build now'}</span>` : '<span class="ok-text">OK</span>'}</td>
+              ? `<span class="bad-text">${isPart ? 'Reorder now' : 'Build now'}</span>`
+              : Number(r.on_hand) <= Number(r.reorder_point)
+                ? `<span class="ok-text">OK</span><br><span class="muted">${isPart ? 'on order' : 'being built'} covers it</span>`
+                : '<span class="ok-text">OK</span>'}</td>
             <td class="nowrap">${r.last_reviewed_at
               ? (r.review_due ? `<span class="bad-text">${esc(date(r.next_review_date))}</span>` : esc(date(r.next_review_date)))
               : '<span class="bad-text">Never reviewed</span>'}
@@ -180,13 +184,17 @@
         if (created.length) {
           // Ordering a part counts as reviewing it.
           await markReviewed(lines.map((l) => l.item_id));
-          toast('Draft ' + created.map(poNumber).join(', ') + ' created. Open Purchasing to send ' + (created.length === 1 ? 'it.' : 'them.'));
+          if (!error) { openDraftPOs(created); return; }   // go straight to the new draft(s) in Purchasing
+          toast('Draft ' + created.map(poNumber).join(', ') + ' created.');
           ticked = new Set(); orderQty = new Map();
         }
         await load();
       });
 
       await load();
+
+      // Coming back to this tab (for example after changing a setting) recalculates.
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
 
       // Realtime: stock, purchase orders and item edits refresh the numbers.
       // (Skipped while someone is typing an order quantity.)

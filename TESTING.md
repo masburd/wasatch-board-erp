@@ -75,10 +75,10 @@ Tax is 7.25%. Prices used below: Street Complete 8.0" (`WBC-2001`) $140, Pro Com
 Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer from Orem if not).
 
 - [ ] **E1.** Point of Sale → Store: Provo, Customer: Walk-in. Scan `WBC-2001` and `WBC-1603`. Subtotal **$155.00**.
-- [ ] **E2.** Discount % = 10. Discount −$15.50, after discount $139.50, tax **$10.11**, total **$149.61**.
+- [ ] **E2.** Discount % = 10. Discount −$15.50, **After discount $139.50**, tax **$10.11**, total **$149.61**.
 - [ ] **E3.** **Complete sale.** A receipt appears with SO number, lines, discount, tax and total. **Print** opens a print window with only the receipt.
 - [ ] **E4.** Inventory: Provo is down 1 Street Complete and 1 Skate Tool. History shows two "Sale" rows with a unit cost (that cost is the COGS).
-- [ ] **E5.** Dashboard "Sales today" went up by $139.50 (revenue is after discount and before tax).
+- [ ] **E5.** Dashboard "Sales today (before tax)" went up by $139.50 (revenue is after discount and before tax). On Point of Sale, today's sales list shows the same sale as $139.50 under "Sales (before tax)" and $149.61 under "Total paid (with tax)".
 - [ ] **E6. Out of stock.** Try to sell more of an item than Provo has: the sale is refused and nothing is saved.
 - **Keep this sale's SO number for test G.**
 
@@ -89,9 +89,9 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 - [ ] **F1.** Sales Orders → **New sales order** → customer Provo Board Rentals (pickup switches to Provo). Add Cruiser Complete with a quantity **3 more than Provo has**, plus 2 Skate Tools. **Place order**. Status "Order Placed".
 - [ ] **F2.** The Cruiser line shows Availability "Transfer from another location" with tomorrow's date, and the order appears in the Backorders panel.
 - [ ] **F3.** **Fulfil what is in stock**: the tools and Provo's cruisers ship; the order stays "Order Placed" with 3 still open.
-- [ ] **F4.** Inventory → Transfer 3 Cruiser Complete from OREM to PROVO. Back on the order the line turns ready. Fulfil again: status **Fulfilled**. **Close order (collected)**: **Closed**.
+- [ ] **F4.** Inventory → Transfer 3 Cruiser Complete from OREM to PROVO. Back on the order the line turns ready, and in the list the order shows "Ready to fulfil" under Order Placed. Fulfil again: status **Fulfilled**. **Close order (collected)**: **Closed**.
 - [ ] **F5. Cancel.** New order for any customer → Place → **Cancel order**: status Cancelled, no stock moved.
-- [ ] **F6. Ordered from a store with nothing anywhere:** a part with no stock at any location shows "On order" (if a PO is coming) or "Reorder", with a date based on the supplier's lead time.
+- [ ] **F6. Ordered from a store with nothing anywhere:** a part with no stock at any location shows "On order" (if a PO is coming) or "Reorder", with a date based on the supplier's lead time. To see whether a PO is coming for that part: Due for Review → "All items" → its **On order** column (above 0 = a sent PO is on the way; Purchasing → filter "Order Sent" shows which one).
 
 ## G. Returns and exchanges
 
@@ -136,11 +136,11 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 *What it shows: the ordering rules are calculated from history and the editable settings.*
 
 - [ ] **J1.** Due for Review → "All items", "Parts". Pick one row and check by calculator: Reorder point = d × L + 1.65 × σ × √L, using that row's Daily usage (d), Std dev (σ) and Lead time (L).
-- [ ] **J2.** "At or below reorder point" lists only rows marked "Reorder now".
+- [ ] **J2.** "Reorder now" means **on hand + on order ≤ reorder point** (stock already on a sent PO counts, so you do not order twice). The "Reorder now" filter lists only those rows. A part whose on hand alone is below its reorder point, but which has enough on order, shows "OK — on order covers it".
 - [ ] **J3.** Tick one part → **Mark ticked as reviewed**: its next review moves 30 days out and it leaves the "Due for review" list.
-- [ ] **J4.** Tick a part at its reorder point → **Create draft POs for ticked parts**: a draft PO for its supplier appears in Purchasing with the EOQ as quantity. (Cancel that PO afterwards.)
+- [ ] **J4.** Tick a part marked "Reorder now" → **Create draft POs for ticked parts**: Purchasing opens on the new draft PO, with the supplier's name in its title and the EOQ **rounded up** to a whole unit as quantity (EOQ 67.3 → 68). (Cancel that PO afterwards.)
 - [ ] **J5. EOQ responds.** Settings → Ordering cost per PO 25 → **100** → Save. Due for Review: every EOQ is **doubled** (√4 = 2). **Put it back to 25.**
-- [ ] **J6. Service level.** Settings → Service level z 1.65 → **2.33**. Safety stock rises by 2.33 ÷ 1.65 ≈ 1.41×, reorder points rise. **Put it back to 1.65.**
+- [ ] **J6. Service level.** Do this when no one else is testing (other people's sales change usage, and so every number). Write down one part's **Safety stock** and **EOQ**. Settings → **Service level z-score** 1.65 → **2.33** → Save (the note beside it now says about 99.0%). Back on Due for Review: that safety stock is now about **1.41×** the old one (2.33 ÷ 1.65); reorder points rise by the same number of units as the safety stock did; **EOQ does not change**. **Put it back to 1.65.**
 - [ ] **J7. Tax.** Settings → tax 0.0725 → 0.08. A new POS sale uses 8%; an old receipt still shows 7.25%. **Put it back to 0.0725.**
 
 ## K. MRP
@@ -159,11 +159,11 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 
 *What it shows: the P&L, valuation and turnover are all calculated and update live.*
 
-- [ ] **L1.** Last 365 days P&L: Net sales = Revenue − Refunds; Gross profit = Net sales − COGS + Cost put back; Profit = Gross profit − Scrap − Written off − Count adjustments. Check with a calculator.
+- [ ] **L1.** (Needs `sql/18_financials_speed.sql` run.) The P&L loads within a few seconds. Last 365 days P&L: Net sales = Revenue − Refunds; Gross profit = Net sales − COGS + Cost put back; Profit = Gross profit − Scrap − Written off − Count adjustments. Check with a calculator.
 - [ ] **L2.** Monthly table: Jun–Aug higher than winter; December higher than November (Starter Kits and helmets).
 - [ ] **L3.** "Last 30 days": every number changes. Today's sales and returns from E and G are in it.
 - [ ] **L4.** Turnover cards: Turnover = COGS ÷ Average inventory value (check by dividing).
-- [ ] **L5.** Valuation: All locations total = Dashboard "Inventory value". By item: value = total units × average cost.
+- [ ] **L5.** Valuation: All locations total = Dashboard "Inventory value". By item: value = total units × average cost (average cost is shown to 4 decimals so this matches to the cent).
 
 ## M. Reports
 

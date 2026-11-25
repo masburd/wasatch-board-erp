@@ -462,7 +462,13 @@
       if (!(await loadMaster())) return;
       $('new-supplier').innerHTML = suppliers.filter((s) => s.is_active)
         .map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      // Coming from Due for Review or MRP: purchasing.html?po=12 opens that PO,
+      // purchasing.html?status=draft shows only drafts.
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('status')) $('status-filter').value = params.get('status');
+      if (params.get('po')) selectedId = Number(params.get('po'));
       await loadPos();
+      if (selectedId) $('detail-panel').scrollIntoView({ block: 'nearest' });   // loadPos opened it
 
       // Realtime: POs and stock changed by anyone refresh this screen.
       // (Skipped while a receipt is being typed, so the boxes are not wiped.)

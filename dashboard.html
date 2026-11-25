@@ -82,7 +82,7 @@
       const ordersToday = sales.error ? '!' : sales.data.length;
 
       const cards = [
-        [salesToday, 'Sales today'], [ordersToday, 'Orders today'],
+        [salesToday, 'Sales today (before tax)'], [ordersToday, 'Orders today'],
         [units, 'Units on hand'], [value, 'Inventory value'],
         [onOrder, 'POs on their way'], [owed, 'Owed to suppliers'],
         [openJobs, 'Production jobs open'], [toReorder, 'Items at reorder point'],

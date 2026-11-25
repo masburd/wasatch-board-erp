@@ -236,6 +236,12 @@ const WBC = (() => {
     return { created, error: null };
   }
 
+  // After creating draft POs, open Purchasing on them: one PO opens directly,
+  // several show the list of drafts.
+  function openDraftPOs(created) {
+    window.location.href = created.length === 1 ? 'purchasing.html?po=' + created[0] : 'purchasing.html?status=draft';
+  }
+
   function showSetupNotice() {
     document.body.innerHTML = `
       <main class="center-card">
@@ -317,6 +323,6 @@ const WBC = (() => {
 
   return {
     sb, configured, esc, money, percent, qty, dateTime, today, daysAgo, date, dateOf, poNumber, moNumber, toast,
-    scanBox, findByCode, cameraScan, soNumber, createDraftPOs, initPage, signOut, showSetupNotice,
+    scanBox, findByCode, cameraScan, soNumber, createDraftPOs, openDraftPOs, initPage, signOut, showSetupNotice,
   };
 })();

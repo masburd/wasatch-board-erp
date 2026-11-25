@@ -41,6 +41,7 @@
               <input id="discount" class="qty" type="number" min="0" max="100" step="1" value="0" style="width:64px;margin-left:6px"></td>
             <td class="num" id="t-discount">$0.00</td>
           </tr>
+          <tr><td>After discount</td><td class="num" id="t-net">$0.00</td></tr>
           <tr><td id="t-tax-label">Sales tax</td><td class="num" id="t-tax">$0.00</td></tr>
           <tr class="grand"><td>Total</td><td class="num" id="t-total">$0.00</td></tr>
         </table>
@@ -66,9 +67,9 @@
     <div class="panel no-print">
       <h2>Today's sales at this store</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Receipt</th><th>Time</th><th>Customer</th><th class="num">Units</th><th class="num">Total</th><th></th></tr></thead>
+        <thead><tr><th>Receipt</th><th>Time</th><th>Customer</th><th class="num">Units</th><th class="num">Sales (before tax)</th><th class="num">Total paid (with tax)</th><th></th></tr></thead>
         <tbody id="recent-body"></tbody>
-        <tfoot><tr><td colspan="4">Total taken today</td><td class="num" id="recent-total"></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="4">Today at this store</td><td class="num" id="recent-net"></td><td class="num" id="recent-total"></td><td></td></tr></tfoot>
       </table></div>
     </div>
   </div>
@@ -193,6 +194,7 @@
         const t = totals();
         $('t-gross').textContent = money(t.gross);
         $('t-discount').textContent = t.gross - t.net > 0 ? '−' + money(t.gross - t.net) : money(0);
+        $('t-net').textContent = money(t.net);
         $('t-tax-label').textContent = 'Sales tax (' + (taxRate * 100).toFixed(2) + '%)';
         $('t-tax').textContent = money(t.tax);
         $('t-total').textContent = money(t.total);
@@ -275,6 +277,7 @@
                 <td class="num">${money(l.line_gross)}</td></tr>`).join('')}
               <tr class="rule"><td colspan="3">Subtotal</td><td class="num">${money(o.gross)}</td></tr>
               ${Number(o.discount_amount) > 0 ? `<tr><td colspan="3">Discount (${qty(o.discount_pct)}%)</td><td class="num">−${money(o.discount_amount)}</td></tr>` : ''}
+              ${Number(o.discount_amount) > 0 ? `<tr><td colspan="3">After discount</td><td class="num">${money(o.net)}</td></tr>` : ''}
               <tr><td colspan="3">Sales tax (${(Number(o.tax_rate) * 100).toFixed(2)}%)</td><td class="num">${money(o.tax)}</td></tr>
               <tr class="rule grand"><td colspan="3">Total</td><td class="num">${money(o.total)}</td></tr>
             </tbody>
@@ -303,9 +306,11 @@
           <td class="nowrap">${esc(new Date(o.order_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))}</td>
           <td>${esc(o.customer_name)}</td>
           <td class="num">${qty(o.units)}</td>
+          <td class="num">${money(o.revenue)}</td>
           <td class="num">${money(o.total)}</td>
           <td><button class="btn small" data-receipt="${o.order_id}">Receipt</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="muted">No sales yet today.</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">No sales yet today.</td></tr>';
+        $('recent-net').textContent = money(data.reduce((sum, o) => sum + Number(o.revenue), 0));
         $('recent-total').textContent = money(data.reduce((sum, o) => sum + Number(o.total), 0));
       }
       $('recent-body').addEventListener('click', (event) => {

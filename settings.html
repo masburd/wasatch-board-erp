@@ -32,12 +32,32 @@
       const USED = {
         ordering_cost: 'EOQ: the S in √(2DS / H).',
         holding_rate: 'EOQ: H = this rate × the item\'s unit cost.',
-        service_level_z: 'Safety stock and reorder point: z × σ × √L. 1.65 = 95% service level.',
+        service_level_z: 'Safety stock and reorder point: z × σ × √L.',
         tax_rate: 'Copied onto each new sale. Old sales keep the rate they were made with.',
         assembly_fee: 'Added to the price of a Build Your Own Board order.',
         usage_window_days: 'How many recent days are averaged for daily usage (d) and its standard deviation (σ).',
         mrp_horizon_days: 'The default number of days ahead that MRP plans for.',
       };
+
+      // Labels shown here instead of the stored ones (the stored label for z
+      // says "(95%)", which is only true while z = 1.65).
+      const LABEL = { service_level_z: 'Service level z-score' };
+      const labelOf = (s) => LABEL[s.key] || s.label;
+
+      // Share of normal-distribution demand covered by z (the service level),
+      // so the note always matches the z in use.
+      function serviceLevel(z) {
+        const t = 1 / (1 + 0.2316419 * Math.abs(z));
+        const d = Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI);
+        const tail = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        return z >= 0 ? 1 - tail : tail;
+      }
+      function noteFor(s) {
+        if (s.key === 'service_level_z') {
+          return USED.service_level_z + ` z = ${Number(s.value)} means about ${(serviceLevel(Number(s.value)) * 100).toFixed(1)}% of order cycles without running out.`;
+        }
+        return USED[s.key] || '';
+      }
 
       let settings = [];
 
@@ -47,10 +67,10 @@
         settings = data;
         document.getElementById('settings-body').innerHTML = settings.map((s) => `
           <tr data-key="${esc(s.key)}">
-            <td>${esc(s.label)}</td>
-            <td class="num"><input class="qty" type="number" step="any" min="0" value="${esc(s.value)}" aria-label="${esc(s.label)}"></td>
+            <td>${esc(labelOf(s))}</td>
+            <td class="num"><input class="qty" type="number" step="any" min="0" value="${esc(s.value)}" aria-label="${esc(labelOf(s))}"></td>
             <td class="muted">${esc(s.unit)}</td>
-            <td class="muted">${esc(USED[s.key] || '')}</td>
+            <td class="muted">${esc(noteFor(s))}</td>
             <td><button class="btn small">Save</button></td>
           </tr>`).join('');
       }
@@ -68,7 +88,7 @@
         const { error } = await sb.from('settings').update({ value }).eq('key', setting.key);
         button.disabled = false;
         if (error) { toast(error.message, true); return; }
-        toast(setting.label + ' saved.');
+        toast(labelOf(setting) + ' saved.');
         await load();
       });
 

@@ -120,6 +120,18 @@
 
       let orders = [];       // rows from sales_order_totals
       let openLines = [];    // rows from open_order_lines (everything still waiting)
+
+      // Under "Order Placed": can the store hand it over now? Worked out from the
+      // order's waiting lines (the status itself only changes when it is fulfilled).
+      function readiness(o) {
+        if (o.status !== 'placed') return '';
+        const lines = openLines.filter((l) => l.order_id === o.order_id);
+        if (!lines.length) return '';
+        const ready = lines.filter((l) => l.availability === 'ready').length;
+        if (ready === lines.length) return '<br><span class="ok-text" style="font-size:12px">Ready to fulfil</span>';
+        if (ready > 0) return '<br><span class="muted" style="font-size:12px">Partly ready</span>';
+        return '<br><span class="bad-text" style="font-size:12px">Waiting for stock</span>';
+      }
       let items = [], customers = [], locations = [];
       let levels = new Map();  // "itemId:locationId" -> on hand
       let taxRate = 0;
@@ -184,7 +196,7 @@
             <td class="nowrap"><strong>${esc(soNumber(o.order_id))}</strong>${o.channel === 'pos' ? ' <span class="tag">till</span>' : ''}</td>
             <td>${esc(o.customer_name)}</td>
             <td>${esc(locCode(o.location_id))}</td>
-            <td><span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span></td>
+            <td><span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span>${readiness(o)}</td>
             <td class="nowrap">${esc(dateOf(o.order_date))}</td>
             <td class="nowrap">${esc(date(o.requested_date))}</td>
             <td class="num">${qty(o.units)}</td>
@@ -346,7 +358,7 @@
         $('detail-panel').hidden = false;
         $('d-error').textContent = '';
         $('d-title').innerHTML = `${esc(soNumber(o.order_id))} · ${esc(o.customer_name)}
-          <span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span>`;
+          <span class="status ${STATUS_CLASS[o.status]}">${esc(STATUS[o.status])}</span>${readiness(o)}`;
 
         const fact = (label, value) => `<div><span>${esc(label)}</span>${value}</div>`;
         $('d-facts').innerHTML = [

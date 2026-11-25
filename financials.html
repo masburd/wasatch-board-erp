@@ -102,7 +102,12 @@
           sb.rpc('inventory_turnover', range),
         ]);
         const error = totalRes.error || monthRes.error || turnRes.error;
-        if (error) { toast(error.message + ' — has sql/12_financials_reports.sql been run?', true); return; }
+        if (error) {
+          // Show the problem where the numbers would be, so it is not mistaken for slow loading.
+          $('pnl-body').innerHTML = `<tr><td class="error-text">Could not load the P&amp;L: ${esc(error.message)}</td></tr>`;
+          toast(error.message, true);
+          return;
+        }
 
         // The statement. A line is [label, amount, kind]; minus lines show in brackets.
         const t = (totalRes.data && totalRes.data[0]) || {};
@@ -153,6 +158,8 @@
       }
 
       // ---------------- valuation (always "now") ----------------
+      // Average cost is stored to 4 decimals; showing all 4 lets units × cost be checked to the cent.
+      const cost4 = (value) => '$' + Number(value || 0).toFixed(4);
       async function loadValuation() {
         const [locRes, itemRes] = await Promise.all([
           sb.from('inventory_value_by_location').select('*').order('location_id'),
@@ -185,7 +192,7 @@
           <td class="nowrap">${esc(i.sku)}</td><td>${esc(i.name)}</td>
           ${codes.map((c) => `<td class="num">${qty(i.qty[c] || 0)}</td>`).join('')}
           <td class="num">${qty(codes.reduce((total, c) => total + (i.qty[c] || 0), 0))}</td>
-          <td class="num">${money(i.unit_cost)}</td><td class="num">${money(i.value)}</td></tr>`).join('')
+          <td class="num">${cost4(i.unit_cost)}</td><td class="num">${money(i.value)}</td></tr>`).join('')
           || '<tr><td colspan="8" class="muted">No stock.</td></tr>';
       }
 

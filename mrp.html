@@ -113,7 +113,7 @@
     (async () => {
       const me = await WBC.initPage('MRP');
       if (!me) return;
-      const { sb, esc, qty, date, today, poNumber, moNumber, toast, createDraftPOs } = WBC;
+      const { sb, esc, qty, date, today, poNumber, moNumber, toast, createDraftPOs, openDraftPOs } = WBC;
       const $ = (id) => document.getElementById(id);
 
       let parents = [];          // rows from mrp_parents()
@@ -307,6 +307,7 @@
         $('po-btn').disabled = false;
         if (error) $('part-error').textContent = error.message;
         if (created.length) {
+          if (!error) { openDraftPOs(created); return; }   // go straight to the new draft(s) in Purchasing
           toast('Draft ' + created.map(poNumber).join(', ') + ' created. They count as "on order" once sent from Purchasing.');
           ticked = new Set(); orderQty = new Map();
         }

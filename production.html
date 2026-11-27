@@ -564,6 +564,8 @@
           [none ? '—' : percent(t.final_yield), 'Final yield'],
           [none ? '—' : percent(t.first_pass_yield), 'First-pass yield'],
           [none ? '—' : percent(t.scrap_rate), 'Scrap rate'],
+          [qty(t.units_reworked), 'Boards reworked'],
+          [none ? '—' : percent(Number(t.units_reworked) / Number(t.units_started)), 'Rework rate'],
           [none ? '—' : buildTime(t.avg_build_hours), 'Average build time per job'],
           [none ? '—' : qty(t.minutes_per_board) + ' min', 'Build time per board'],
           [money(t.good_value || 0), 'Value built into stock'],

@@ -226,7 +226,9 @@
                     ${level === 'part' ? `<br><span class="muted">${esc(supplierName.get(first.supplier_id) || '')}</span>` : ''}</td>
                   <td rowspan="5" class="num">${qty(first.on_hand)}</td>
                   <td rowspan="5" class="num">${esc(first.lead_time_days)} d</td>
-                  <td class="muted">Gross need</td>${cells((r) => `<span title="${esc(grossTitle(r))}">${zero(r.gross)}</span>`)}</tr>
+                  <td class="muted">Gross need</td>${cells((r) => `<span title="${esc(grossTitle(r))}">${zero(r.gross)}</span>`
+                    + (Number(r.orders) > 0 ? `<br><span class="muted nowrap" style="font-size:12px">incl. ${qty(r.orders)} on sales orders</span>` : '')
+                    + (level === 'part' && Number(r.dependent) > 0 ? `<br><span class="muted nowrap" style="font-size:12px">incl. ${qty(r.dependent)} for builds</span>` : ''))}</tr>
                 <tr><td class="muted">Scheduled receipts</td>${cells((r) => zero(r.scheduled))}</tr>
                 <tr><td><strong>${level === 'part' ? 'Planned order' : 'Planned build'}</strong></td>${cells((r) =>
                   (Number(r.net) > 0 ? `<strong class="bad-text">${qty(r.net)}</strong>` : '<span class="muted">0</span>'))}</tr>
@@ -296,11 +298,19 @@
 
       $('po-btn').addEventListener('click', async () => {
         $('part-error').textContent = '';
-        const lines = parts.filter((p) => ticked.has(p.item_id)).map((p) => ({
-          supplier_id: p.supplier_id, item_id: p.item_id, unit_cost: Number(p.unit_cost || 0),
+        const all = parts.filter((p) => ticked.has(p.item_id)).map((p) => ({
+          sku: p.sku, supplier_id: p.supplier_id, item_id: p.item_id, unit_cost: Number(p.unit_cost || 0),
           qty: Number(orderQty.has(p.item_id) ? orderQty.get(p.item_id) : (Number(p.net) > 0 ? p.suggested_order : 0)),
-        })).filter((l) => l.qty > 0);
-        if (!lines.length) { $('part-error').textContent = 'Tick at least one part and give it an order quantity.'; return; }
+        }));
+        if (!all.length) { $('part-error').textContent = 'Tick at least one part.'; return; }
+        // Never skip a ticked part quietly: say which ones still need a quantity.
+        const missing = all.filter((l) => !(l.qty > 0));
+        if (missing.length) {
+          $('part-error').textContent = 'Give an order quantity for ' + missing.map((l) => l.sku).join(', ')
+            + ' (nothing is short for it, so no amount was suggested), or untick it.';
+          return;
+        }
+        const lines = all;
 
         $('po-btn').disabled = true;
         const { created, error } = await createDraftPOs(lines);

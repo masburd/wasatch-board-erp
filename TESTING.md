@@ -124,10 +124,10 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 *What it shows: issuing parts, completing with scrap and rework, cost rolled up from parts, quality metrics.*
 
 - [ ] **I1.** Production → **New production order** → Street Complete 8.0", quantity 5. The parts table lists 7 parts × 5 with "Enough?" for each and the expected cost. **Save and issue parts now**.
-- [ ] **I2.** Inventory: each of the 7 parts at OREM is down by 5; history shows "Production issue" rows.
+- [ ] **I2.** Check this **before** completing the order (I3–I4). Inventory → OREM: each of the 7 **parts** (deck, trucks, wheels, bearings, hardware, grip, box) is down by 5; history shows "Production issue" rows. The Street Complete board itself does not change yet: it goes **up** only when the order is completed in I4.
 - [ ] **I3.** On the order: **Add scrap or rework line** twice. Line 1: 1 board, Cracked deck, Scrapped. Line 2: 1 board, Grip tape misapplied, Reworked. Summary: "4 good = 5 started − 1 scrapped. Final yield 80% · first-pass yield 60%."
 - [ ] **I4.** **Complete order**. Street Complete at OREM +4. Into stock + scrap cost = parts cost; scrap cost = 1 × cost per board.
-- [ ] **I5.** Production report, today to today: 1 job, 5 started, 4 good, final yield 80.0%, first-pass yield 60.0%, scrap rate 20.0%. Scrap by reason lists Cracked deck (scrapped) and Grip tape misapplied (reworked).
+- [ ] **I5.** Production → the job from I1 in the list: 5 started, 4 good, 1 reworked, final yield 80%, first-pass yield 60%. Production report, today to today: it is **included** (if it was the only job completed today the cards read 1 job, 5 started, 4 good, 80.0%, 60.0%, scrap rate 20.0%; other jobs completed today, such as a custom build, are added in). Scrap by reason lists Cracked deck (scrapped) and Grip tape misapplied (reworked).
 - [ ] **I6.** Production report, last 365 days: a year of jobs, yields below 100%, all four scrap reasons.
 - [ ] **I7. Too big.** New order quantity 500 → Save and issue: refused, "Not enough stock", nothing moves (the order stays Planned). **Cancel order** on it.
 
@@ -138,7 +138,7 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 - [ ] **J1.** Due for Review → "All items", "Parts". Pick one row and check by calculator: Reorder point = d × L + 1.65 × σ × √L, using that row's Daily usage (d), Std dev (σ) and Lead time (L).
 - [ ] **J2.** "Reorder now" means **on hand + on order ≤ reorder point** (stock already on a sent PO counts, so you do not order twice). The "Reorder now" filter lists only those rows. A part whose on hand alone is below its reorder point, but which has enough on order, shows "OK — on order covers it".
 - [ ] **J3.** Tick one part → **Mark ticked as reviewed**: its next review moves 30 days out and it leaves the "Due for review" list.
-- [ ] **J4.** Tick a part marked "Reorder now" → **Create draft POs for ticked parts**: Purchasing opens on the new draft PO, with the supplier's name in its title and the EOQ **rounded up** to a whole unit as quantity (EOQ 67.3 → 68). (Cancel that PO afterwards.)
+- [ ] **J4.** Tick a part (any part: ticking fills its order box with the EOQ rounded up) → **Create draft POs for ticked parts**: Purchasing opens on the new draft PO, with the supplier's name in its title and the EOQ **rounded up** to a whole unit as quantity (EOQ 67.3 → 68). (Cancel that PO afterwards.)
 - [ ] **J5. EOQ responds.** Settings → Ordering cost per PO 25 → **100** → Save. Due for Review: every EOQ is **doubled** (√4 = 2). **Put it back to 25.**
 - [ ] **J6. Service level.** Do this when no one else is testing (other people's sales change usage, and so every number). Write down one part's **Safety stock** and **EOQ**. Settings → **Service level z-score** 1.65 → **2.33** → Save (the note beside it now says about 99.0%). Back on Due for Review: that safety stock is now about **1.41×** the old one (2.33 ÷ 1.65); reorder points rise by the same number of units as the safety stock did; **EOQ does not change**. **Put it back to 1.65.**
 - [ ] **J7. Tax.** Settings → tax 0.0725 → 0.08. A new POS sale uses 8%; an old receipt still shows 7.25%. **Put it back to 0.0725.**
@@ -149,18 +149,18 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 
 - [ ] **K1.** MRP → **Weekly plan**: weeks 1–4 starting today. Each item has gross need, scheduled receipts, planned order/build, order by, projected stock.
 - [ ] **K2.** Longboard Complete (`WBC-2004`) shows the 12-unit Provo Board Rentals order (from the history) and the 12-unit planned production order.
-- [ ] **K3.** Place a sales order for **10 Cruiser Complete** with a requested date **two weeks from today**. Weekly plan: the Cruiser's gross need rises in that week, and so do its parts (Cruiser Deck, Soft Cruiser Wheels, …) in the same week.
+- [ ] **K3.** Weekly plan → **Show: all items**. Note the Cruiser Complete's gross need in **week 3**. Sales Orders → new order for **10 Cruiser Complete** with requested date **exactly 14 days from today** → Place. Back on the Weekly plan (reload): week 3 gross need is 10 higher and says "incl. 10 on sales orders". If that leaves the Cruiser short, a **Planned build** appears and its parts (Cruiser Deck, Soft Cruiser Wheels, …) get "incl. … for builds" in the same or an earlier week. If the Cruisers in stock cover the order, the parts do **not** change: parts follow planned builds, not orders the stock already covers. (Cancel the order afterwards.)
 - [ ] **K4.** A part with "Overdue · do it today" has an order-by date already past (its lead time is longer than the time left).
 - [ ] **K5.** **Order now** tab: Step 1 boards to build; Step 2 parts to buy. Change 30 → 60 days: needs grow.
 - [ ] **K6.** Click **Create production order** on a board with a net need: its net drops by that amount and its parts move from "For boards to build" to "For planned jobs".
-- [ ] **K7.** Tick parts → **Create draft POs for ticked parts**: one draft per supplier. Drafts do **not** reduce the need until they are sent. (Cancel them afterwards.)
+- [ ] **K7.** Tick **several** parts with a planned order → **Create draft POs for ticked parts**: one draft **per supplier**, with one line per ticked part (two parts from the same supplier = one PO with two lines). A ticked part with no quantity is not skipped: the page asks for its quantity. Purchasing opens on the draft(s). Drafts do **not** reduce the need until they are sent. (Cancel them afterwards.)
 
 ## L. Financials
 
 *What it shows: the P&L, valuation and turnover are all calculated and update live.*
 
 - [ ] **L1.** (Needs `sql/18_financials_speed.sql` run.) The P&L loads within a few seconds. Last 365 days P&L: Net sales = Revenue − Refunds; Gross profit = Net sales − COGS + Cost put back; Profit = Gross profit − Scrap − Written off − Count adjustments. Check with a calculator.
-- [ ] **L2.** Monthly table: Jun–Aug higher than winter; December higher than November (Starter Kits and helmets).
+- [ ] **L2.** With **Last 365 days** selected (the 30-day pick only covers two months): the monthly table has 12–13 months; Jun–Aug higher than winter; December higher than November (Starter Kits and helmets).
 - [ ] **L3.** "Last 30 days": every number changes. Today's sales and returns from E and G are in it.
 - [ ] **L4.** Turnover cards: Turnover = COGS ÷ Average inventory value (check by dividing).
 - [ ] **L5.** Valuation: All locations total = Dashboard "Inventory value". By item: value = total units × average cost (average cost is shown to 4 decimals so this matches to the cent).
@@ -180,7 +180,7 @@ Make sure Provo has at least 1 Street Complete 8.0" and 1 Skate Tool (transfer f
 
 *What it shows: a customer login sees live stock, orders for pickup, designs a custom board, and cannot see staff data.*
 
-Use a private window so your staff login stays signed in elsewhere.
+**Use a private (incognito) window for the customer login and a normal window for staff.** One browser window keeps only one login for all its tabs: signing in as staff in another tab takes over the shop tab too, and orders are then refused with "Finish setting up your customer account first". (The pages now reload themselves when this happens.)
 
 - [ ] **N1. Sign up.** Sign-in page → "Create an account" → made-up email + password. You land on the shop and are asked for name, phone and usual store. Fill them in.
 - [ ] **N2. Shop.** Stock shows per store and warehouse. Search and category filter work. No costs anywhere.
@@ -213,7 +213,7 @@ Use two staff windows side by side (B = watching, A = acting).
 
 - [ ] **P1.** Inventory ledger check passes (C2).
 - [ ] **P2.** Purchasing: hundreds of POs. Timberline's are mostly late; Urethane's are short (fill under 100%).
-- [ ] **P3.** Production report over the year: dozens of jobs, scrap rate around 3% and about 6% of boards reworked.
+- [ ] **P3.** Production report, **from a year ago to today**: dozens of jobs, a scrap rate of a few percent (the history rolls 3% per board, so 1–4% is normal) and a **Rework rate** card of roughly 4–8%.
 - [ ] **P4.** Reports → Sales by month: summer peak for cruisers and longboards (Top sellers for Jun–Aug vs. Jan–Feb), December spike, Black Friday week visible by day.
 
 ---

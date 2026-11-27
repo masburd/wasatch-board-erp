@@ -128,6 +128,16 @@
       const { data: { session } } = await sb.auth.getSession();
       if (!session) { window.location.replace('index.html'); return; }
       $('signout-btn').onclick = WBC.signOut;
+      WBC.watchAccount(session.user.id);   // reload if another tab signs in as someone else
+
+      // The shop already shows this customer, so "Finish setting up" from the
+      // database means another login took over this browser (another tab).
+      function explain(error) {
+        if (!/Finish setting up/.test(error.message)) return error.message;
+        setTimeout(() => window.location.reload(), 4000);
+        return 'This browser is now signed in as a different account (probably in another tab). '
+          + 'Reloading… Use a private/incognito window for the customer login and a normal window for staff.';
+      }
       const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
       $('staff-link').hidden = !(profile && profile.role === 'staff');
 
@@ -283,7 +293,7 @@
           p_note: $('c-note').value.trim() || null,
         });
         $('c-place').disabled = false;
-        if (error) { $('cart-error').textContent = error.message; return; }
+        if (error) { $('cart-error').textContent = explain(error); return; }
         cart = new Map(); saveCart(); $('c-note').value = ''; $('c-date').value = '';
         renderCart();
         toast('Order ' + soNumber(data) + ' placed.');
@@ -349,7 +359,7 @@
           p_note: null,
         });
         $('b-order').disabled = false;
-        if (error) { $('b-error').textContent = error.message; return; }
+        if (error) { $('b-error').textContent = explain(error); return; }
         toast('Custom board ordered: ' + soNumber(data) + '.');
         showTab('orders');
       });

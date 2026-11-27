@@ -278,7 +278,23 @@ const WBC = (() => {
     }
 
     drawFrame(pageTitle, profile);
+    watchAccount(session.user.id);
     return { user: session.user, profile };
+  }
+
+  // One browser holds one login for all its tabs. If someone signs in as a
+  // different account in another tab (for example staff in one tab, a
+  // customer in another), this tab would keep showing the old person while
+  // the database sees the new one. So when the login changes, reload.
+  function watchAccount(userId) {
+    const check = async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      const now = session ? session.user.id : null;
+      if (now !== userId) window.location.reload();
+    };
+    window.addEventListener('storage', (event) => { if (event.key && event.key.includes('auth-token')) check(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    window.addEventListener('focus', check);
   }
 
   function drawFrame(pageTitle, profile) {
@@ -323,6 +339,6 @@ const WBC = (() => {
 
   return {
     sb, configured, esc, money, percent, qty, dateTime, today, daysAgo, date, dateOf, poNumber, moNumber, toast,
-    scanBox, findByCode, cameraScan, soNumber, createDraftPOs, openDraftPOs, initPage, signOut, showSetupNotice,
+    scanBox, findByCode, cameraScan, soNumber, createDraftPOs, openDraftPOs, initPage, watchAccount, signOut, showSetupNotice,
   };
 })();

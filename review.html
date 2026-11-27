@@ -95,7 +95,9 @@
         const list = visibleRows();
         $('plan-body').innerHTML = list.map((r) => {
           const isPart = r.item_type === 'part';
-          const amount = orderQty.has(r.item_id) ? orderQty.get(r.item_id) : (r.needs_reorder ? r.suggested_qty : '');
+          // Suggested order = EOQ rounded up, filled in for rows to reorder and for any row you tick.
+          const amount = orderQty.has(r.item_id) ? orderQty.get(r.item_id)
+            : (r.needs_reorder || ticked.has(r.item_id) ? r.suggested_qty : '');
           return `<tr data-item="${r.item_id}">
             <td><input type="checkbox" class="tick" ${ticked.has(r.item_id) ? 'checked' : ''} aria-label="Tick ${esc(r.sku)}"></td>
             <td class="nowrap">${esc(r.sku)}</td><td>${esc(r.name)}</td>
@@ -138,6 +140,7 @@
         const id = Number(row.dataset.item);
         if (event.target.classList.contains('tick')) {
           if (event.target.checked) ticked.add(id); else ticked.delete(id);
+          render();   // shows the EOQ in the order box of a newly ticked row
         }
       });
       $('plan-body').addEventListener('input', (event) => {
@@ -171,11 +174,17 @@
 
       $('po-btn').addEventListener('click', async () => {
         $('plan-error').textContent = '';
-        const lines = tickedRows().filter((r) => r.item_type === 'part').map((r) => ({
-          supplier_id: r.supplier_id, item_id: r.item_id, unit_cost: Number(r.standard_cost || 0),
-          qty: Number(orderQty.has(r.item_id) ? orderQty.get(r.item_id) : (r.needs_reorder ? r.suggested_qty : 0)),
-        })).filter((l) => l.qty > 0);
-        if (!lines.length) { $('plan-error').textContent = 'Tick at least one part and give it an order quantity.'; return; }
+        const all = tickedRows().filter((r) => r.item_type === 'part').map((r) => ({
+          sku: r.sku, supplier_id: r.supplier_id, item_id: r.item_id, unit_cost: Number(r.standard_cost || 0),
+          qty: Number(orderQty.has(r.item_id) ? orderQty.get(r.item_id) : r.suggested_qty),
+        }));
+        if (!all.length) { $('plan-error').textContent = 'Tick at least one part.'; return; }
+        const missing = all.filter((l) => !(l.qty > 0));
+        if (missing.length) {
+          $('plan-error').textContent = 'Give an order quantity for ' + missing.map((l) => l.sku).join(', ') + ' (or untick it).';
+          return;
+        }
+        const lines = all;
 
         $('po-btn').disabled = true;
         const { created, error } = await createDraftPOs(lines);
